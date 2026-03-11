@@ -291,6 +291,42 @@ TypeEnv::TypeEnv() {
     // error: list char -> alpha
     add_funcdecl(make_builtin_fd("error", {"alpha"},
         tfun_ast(tstr(), tvar_ast("alpha"))));
+
+    // --- Extra built-in functions not declared in Standard.hop ---
+    // These extend Paterson's standard environment for convenience.
+
+    // max, min, gcd, lcm: num # num -> num
+    for (const char* op : {"max", "min", "gcd", "lcm"}) {
+        add_funcdecl(make_builtin_fd(op, {},
+            tfun_ast(tprod_ast(tnum(), tnum()), tnum())));
+    }
+
+    // even, odd: num -> bool
+    for (const char* op : {"even", "odd"}) {
+        add_funcdecl(make_builtin_fd(op, {}, tfun_ast(tnum(), tbool())));
+    }
+
+    // length: list alpha -> num
+    add_funcdecl(make_builtin_fd("length", {"alpha"},
+        tfun_ast(tlist_a(), tnum())));
+
+    // reverse: list alpha -> list alpha
+    add_funcdecl(make_builtin_fd("reverse", {"alpha"},
+        tfun_ast(tlist_a(), tlist_a())));
+
+    // read: list char -> list char  (reads a file by name)
+    add_funcdecl(make_builtin_fd("read", {},
+        tfun_ast(tstr(), tstr())));
+
+    // print: alpha -> beta  (print and discard — polymorphic)
+    add_funcdecl(make_builtin_fd("print", {"alpha", "beta"},
+        tfun_ast(tvar_ast("alpha"), tvar_ast("beta"))));
+
+    // input: list char  (lazy stdin)
+    // Registered as a value, not a function — no FuncDecl needed;
+    // the evaluator puts it in global_env_ as a list.
+    // argv: list (list char)
+    // Same: a value, handled by evaluator/session.
 }
 
 // ---------------------------------------------------------------------------

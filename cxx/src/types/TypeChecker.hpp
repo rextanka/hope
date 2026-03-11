@@ -77,10 +77,12 @@ private:
     // undone and false is returned.
     bool unify(TyRef t1, TyRef t2);
 
-    // Internal recursive worker; `visited` is used to detect cycles in the
-    // presence of recursive type synonyms (basic occurs check).
+    // Internal recursive worker; `visited` is used to detect cycles.
+    // `expand_budget` limits synonym expansions per unification call to prevent
+    // infinite loops for recursive synonyms (type seq alpha == alpha # seq alpha).
     bool real_unify(TyRef t1, TyRef t2,
-                    std::vector<std::pair<TyRef, TyRef>>& visited);
+                    std::vector<std::pair<TyRef, TyRef>>& visited,
+                    int& expand_budget);
 
     // -----------------------------------------------------------------------
     // AST type → TyRef conversion and instantiation
