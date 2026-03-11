@@ -87,13 +87,15 @@ void TypeChecker::restore_trail(size_t saved) {
 bool TypeChecker::unify(TyRef t1, TyRef t2) {
     std::vector<std::pair<TyRef, TyRef>> visited;
     size_t saved = save_trail();
-    if (real_unify(t1, t2, visited)) return true;
+    int budget = 100;
+    if (real_unify(t1, t2, visited, budget)) return true;
     restore_trail(saved);
     return false;
 }
 
 bool TypeChecker::real_unify(TyRef t1, TyRef t2,
-                              std::vector<std::pair<TyRef, TyRef>>& visited) {
+                              std::vector<std::pair<TyRef, TyRef>>& visited,
+                              int& expand_budget) {
     t1 = deref(t1);
     t2 = deref(t2);
 
@@ -139,11 +141,33 @@ bool TypeChecker::real_unify(TyRef t1, TyRef t2,
     auto* c2 = std::get_if<TyCons>(&t2->data);
     if (!c1 || !c2) return false; // shouldn't happen
 
-    if (c1->name != c2->name) return false;
+    if (c1->name != c2->name) {
+        // Names differ: try expanding one or both as type synonyms.
+        // Expansion order: try t1 first, then t2.
+        auto expand = [&](const TyCons* c) -> TyRef {
+            if (expand_budget <= 0) return nullptr;
+            const TypeDef* td = env_.lookup_type(c->name);
+            if (!td || !td->is_synonym()) return nullptr;
+            if (td->params.size() != c->args.size()) return nullptr;
+            --expand_budget;
+            std::unordered_map<std::string, TyRef> sub;
+            for (size_t i = 0; i < td->params.size(); ++i)
+                sub[td->params[i]] = c->args[i];
+            return ast_to_tyref(*td->synonym_body(), sub);
+        };
+
+        TyRef exp1 = expand(c1);
+        if (exp1) return real_unify(exp1, t2, visited, expand_budget);
+
+        TyRef exp2 = expand(c2);
+        if (exp2) return real_unify(t1, exp2, visited, expand_budget);
+
+        return false;
+    }
     if (c1->args.size() != c2->args.size()) return false;
 
     for (size_t i = 0; i < c1->args.size(); ++i) {
-        if (!real_unify(c1->args[i], c2->args[i], visited))
+        if (!real_unify(c1->args[i], c2->args[i], visited, expand_budget))
             return false;
     }
     return true;
