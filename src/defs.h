@@ -42,6 +42,14 @@
 #	undef	unix
 #endif
 
+/* Apple Clang with -pedantic suppresses the 'unix' predefined macro;
+ * restore it for __APPLE__ and other POSIX-like targets. */
+#if !defined(unix) && !defined(msdos)
+#  if defined(__unix__) || defined(__unix) || defined(__APPLE__)
+#    define unix 1
+#  endif
+#endif
+
 #ifdef	unix
 #	define	RE_EDIT
 #endif
