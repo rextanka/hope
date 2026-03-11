@@ -8,10 +8,10 @@ file(GLOB_RECURSE HOPE_LIB_SOURCES CONFIGURE_DEPENDS
     lexer/*.cpp
     parser/*.cpp
     types/*.cpp
-    # compiler/*.cpp      — added in Phase 3
-    # runtime/*.cpp       — added in Phase 3
-    # builtins/*.cpp      — added in Phase 3
-    # modules/*.cpp       — added in Phase 4
+    # compiler/*.cpp      — added in Phase 4
+    runtime/*.cpp         # Phase 3
+    builtins/*.cpp        # Phase 3
+    modules/*.cpp         # Phase 3
     # printer/*.cpp       — added in Phase 4
     # repl/*.cpp          — added in Phase 4
     # errors/*.cpp        — added in Phase 4
