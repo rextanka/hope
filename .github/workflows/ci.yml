@@ -15,15 +15,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            compiler: gcc-12
-            cc: gcc-12
-            cxx: g++-12
-          - os: ubuntu-22.04
-            compiler: clang-15
-            cc: clang-15
-            cxx: clang++-15
-          - os: macos-14
+          - os: ubuntu-24.04
+            compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
+          - os: ubuntu-24.04
+            compiler: clang-18
+            cc: clang-18
+            cxx: clang++-18
+          - os: macos-15
             compiler: apple-clang
             cc: clang
             cxx: clang++
