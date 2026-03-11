@@ -30,6 +30,39 @@ Session::Session()
 }
 
 // ---------------------------------------------------------------------------
+// set_argv / set_input_stream
+// ---------------------------------------------------------------------------
+
+void Session::set_argv(const std::vector<std::string>& args) {
+    // Build a Hope value: list (list char) — each arg as a list of chars.
+    ValRef result = make_nil();
+    for (auto it = args.rbegin(); it != args.rend(); ++it) {
+        // Build the arg string as list char (back to front).
+        ValRef str = make_nil();
+        for (auto ci = it->rbegin(); ci != it->rend(); ++ci) {
+            str = make_cons(make_char(*ci), str);
+        }
+        result = make_cons(str, result);
+    }
+    evaluator_.register_value("argv", result);
+}
+
+void Session::set_input_stream(std::istream& in) {
+    input_stream_ = &in;
+    // Build a lazy list of stdin chars.  We use a shared_ptr to the stream
+    // and build the list eagerly here (since the stream must be available).
+    // For true laziness this would be a thunk chain; a full eager read is
+    // acceptable for file-redirect use cases.
+    std::string content((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+    ValRef list = make_nil();
+    for (auto it = content.rbegin(); it != content.rend(); ++it) {
+        list = make_cons(make_char(*it), list);
+    }
+    evaluator_.register_value("input", list);
+}
+
+// ---------------------------------------------------------------------------
 // load_standard
 // ---------------------------------------------------------------------------
 
@@ -346,6 +379,175 @@ void Session::print_result(ValRef v, TyRef t, std::ostream& out) {
     }
 
     out << ">> " << val_str << " : " << type_str << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// run_interactive
+// ---------------------------------------------------------------------------
+
+void Session::run_interactive(std::istream& in, std::ostream& out) {
+    // Version banner.
+    out << "Hope C++20 interpreter  (type :quit to exit)\n";
+
+    // Keep a last-loaded file path for :reload.
+    std::string last_loaded_file;
+
+    // Input accumulator: Hope declarations can span multiple lines.
+    // We accumulate until a top-level semicolon terminates the statement.
+    std::string accum;
+    int depth = 0;           // paren/bracket nesting depth
+    bool in_string  = false; // inside a string literal
+    bool in_char    = false; // inside a char literal
+    bool in_comment = false; // inside a ! line comment
+
+    auto prompt = [&]() {
+        if (accum.empty()) out << "hope> " << std::flush;
+        else               out << "...   " << std::flush;
+    };
+
+    // Process whatever is in `accum` as a snippet.
+    auto flush_accum = [&]() {
+        if (accum.empty()) return;
+        std::string code = std::move(accum);
+        accum.clear();
+        depth = 0; in_string = false; in_char = false; in_comment = false;
+        run_string(code, "<interactive>", out);
+    };
+
+    // Trim leading/trailing whitespace from a string view for meta-command
+    // matching.
+    auto trim = [](const std::string& s) -> std::string {
+        size_t start = s.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) return {};
+        size_t end = s.find_last_not_of(" \t\r\n");
+        return s.substr(start, end - start + 1);
+    };
+
+    prompt();
+    std::string line;
+    while (std::getline(in, line)) {
+        // Check for a meta-command on its own line (starts with ':').
+        std::string trimmed = trim(line);
+        if (accum.empty() && !trimmed.empty() && trimmed[0] == ':') {
+            if (trimmed == ":quit" || trimmed == ":exit" || trimmed == ":q") {
+                out << "Goodbye.\n";
+                return;
+            } else if (trimmed == ":clear") {
+                // Reset session by creating a fresh Session is heavy; instead
+                // just clear display records and note to user.
+                display_records_.clear();
+                loaded_files_.clear();
+                loaded_modules_.clear();
+                out << "Session cleared (definitions remain; type :quit to fully restart).\n";
+            } else if (trimmed == ":display") {
+                out << "\n";
+                for (const auto& rec : display_records_) out << rec << "\n";
+            } else if (trimmed.substr(0, 5) == ":load") {
+                std::string path = trim(trimmed.substr(5));
+                if (path.empty()) {
+                    out << "Usage: :load <file.hop>\n";
+                } else {
+                    last_loaded_file = path;
+                    // Allow re-loading (remove from loaded set first).
+                    try {
+                        std::string abs = std::filesystem::absolute(path).string();
+                        loaded_files_.erase(abs);
+                    } catch (...) {
+                        loaded_files_.erase(path);
+                    }
+                    if (!run_file(path, out)) {
+                        out << "Error: could not open " << path << "\n";
+                    }
+                }
+            } else if (trimmed == ":reload") {
+                if (last_loaded_file.empty()) {
+                    out << "No file loaded yet.\n";
+                } else {
+                    try {
+                        std::string abs = std::filesystem::absolute(last_loaded_file).string();
+                        loaded_files_.erase(abs);
+                    } catch (...) {
+                        loaded_files_.erase(last_loaded_file);
+                    }
+                    if (!run_file(last_loaded_file, out)) {
+                        out << "Error: could not open " << last_loaded_file << "\n";
+                    }
+                }
+            } else if (trimmed.substr(0, 5) == ":type") {
+                std::string expr_src = trim(trimmed.substr(5));
+                if (expr_src.empty()) {
+                    out << "Usage: :type <expr>\n";
+                } else {
+                    // Wrap in a temporary eval so the parser sees it.
+                    run_string("!type query\n" + expr_src + ";", "<:type>", out);
+                }
+            } else if (trimmed == ":help" || trimmed == ":?") {
+                out << "Meta-commands:\n"
+                    << "  :load <file>  load a .hop file\n"
+                    << "  :reload       reload last loaded file\n"
+                    << "  :type <expr>  show type of expression\n"
+                    << "  :display      list session definitions\n"
+                    << "  :clear        clear session history\n"
+                    << "  :quit / :exit exit the REPL\n";
+            } else {
+                out << "Unknown command: " << trimmed
+                    << "  (type :help for help)\n";
+            }
+            prompt();
+            continue;
+        }
+
+        // Append the line to the accumulator, scanning for statement endings.
+        // A statement ends at a top-level ';' (not inside a string/comment).
+        for (char ch : line) {
+            if (in_comment) {
+                // Nothing after '!' on the same line is significant.
+                accum += ch;
+                continue;
+            }
+            if (in_string) {
+                accum += ch;
+                if (ch == '"') in_string = false;
+                continue;
+            }
+            if (in_char) {
+                accum += ch;
+                if (ch == '\'') in_char = false;
+                continue;
+            }
+            if (ch == '!') { in_comment = true; accum += ch; continue; }
+            if (ch == '"') { in_string  = true;  accum += ch; continue; }
+            if (ch == '\'') { in_char   = true;  accum += ch; continue; }
+            if (ch == '(' || ch == '[') { ++depth; accum += ch; continue; }
+            if (ch == ')' || ch == ']') {
+                if (depth > 0) --depth;
+                accum += ch;
+                continue;
+            }
+            if (ch == ';' && depth == 0) {
+                accum += ch;
+                flush_accum();
+                prompt();
+                continue;
+            }
+            accum += ch;
+        }
+        // End-of-line resets comment and char state.
+        in_comment = false;
+        in_char    = false;
+        // If the line ended mid-statement, add a newline and keep going.
+        if (!accum.empty()) {
+            accum += '\n';
+            prompt();
+        } else {
+            prompt();
+        }
+    }
+
+    // Process any trailing input without a final semicolon.
+    if (!accum.empty()) {
+        flush_accum();
+    }
 }
 
 } // namespace hope

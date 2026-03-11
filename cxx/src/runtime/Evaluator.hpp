@@ -52,6 +52,9 @@ public:
     void register_builtin(const std::string& name,
                           std::function<ValRef(ValRef)> fn);
 
+    // Register a named value directly (e.g. argv, input).
+    void register_value(const std::string& name, ValRef val);
+
     // Apply a (forced) function value to an argument value.
     // Made public so that Builtins and other helpers can use it.
     ValRef apply(ValRef fun, ValRef arg);
