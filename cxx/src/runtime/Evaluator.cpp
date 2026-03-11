@@ -6,8 +6,12 @@
 #include "runtime/RuntimeError.hpp"
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <sstream>
+
+#include "printer/ExprPrinter.hpp"
+#include "printer/ValuePrinter.hpp"
 
 namespace hope {
 
@@ -344,6 +348,110 @@ ValRef Evaluator::string_to_list(const std::string& text) {
 }
 
 // ---------------------------------------------------------------------------
+// build_repr_subst — build an ExprSubst from an environment for printing
+// lambdas and sections.  We substitute free variables with their value
+// representations so that closures print as e.g. "lambda y => 3 + y".
+// ---------------------------------------------------------------------------
+
+ExprSubst Evaluator::build_repr_subst(const Env& env) const {
+    ExprSubst subst;
+    if (!env) return subst;
+    for (const EnvNode* node = env.get(); node; node = node->next.get()) {
+        const std::string& fname = node->name;
+        const ValRef&       fval  = node->val;
+        if (subst.count(fname)) continue; // most recent binding already added
+        if (!fval) continue;
+        // We look through the value non-recursively (no forcing — we cannot
+        // force here since we may be inside eval).  Only constant-like values
+        // get a repr; functions get their repr string if available.
+        const Value* raw = fval.get();
+        if (!raw) continue;
+        std::visit([&](const auto& vd) {
+            using VT = std::decay_t<decltype(vd)>;
+            if constexpr (std::is_same_v<VT, VNum>) {
+                // Integer or float numeral.
+                double n = vd.n;
+                if (std::isfinite(n) && n == std::floor(n) &&
+                    n >= -9007199254740992.0 && n <= 9007199254740992.0) {
+                    subst[fname] = std::to_string(static_cast<long long>(n));
+                } else {
+                    std::ostringstream ss; ss << n;
+                    subst[fname] = ss.str();
+                }
+            } else if constexpr (std::is_same_v<VT, VChar>) {
+                std::string s = "'";
+                char c = vd.c;
+                if (c == '\'') s += "\\'";
+                else if (c == '\\') s += "\\\\";
+                else s += c;
+                s += "'";
+                subst[fname] = s;
+            } else if constexpr (std::is_same_v<VT, VFun>) {
+                if (vd.repr.has_value()) {
+                    subst[fname] = *vd.repr;
+                }
+                // If no repr, leave variable unsubstituted (prints as its name).
+            } else if constexpr (std::is_same_v<VT, VThunk>) {
+                // Peek at the thunk's expression to infer a repr without forcing.
+                if (vd.expr) {
+                    const Expr& te = *vd.expr;
+                    if (const auto* opref = std::get_if<EOpRef>(&te.data)) {
+                        // e.g. (+) — its repr is "(+)"
+                        subst[fname] = "(" + opref->op + ")";
+                    } else if (const auto* evar = std::get_if<EVar>(&te.data)) {
+                        // A variable thunk: use whatever we already have for it,
+                        // or the variable name itself (for global functions etc.).
+                        auto it2 = subst.find(evar->name);
+                        if (it2 != subst.end())
+                            subst[fname] = it2->second;
+                        else
+                            subst[fname] = evar->name; // e.g. "square"
+                    } else if (std::holds_alternative<ELambda>(te.data) ||
+                               std::holds_alternative<ESection>(te.data) ||
+                               std::holds_alternative<ETuple>(te.data)   ||
+                               std::holds_alternative<EList>(te.data)    ||
+                               std::holds_alternative<ELit>(te.data)     ||
+                               std::holds_alternative<EInfix>(te.data)   ||
+                               std::holds_alternative<EApply>(te.data)) {
+                        // Expression whose repr can be computed directly from
+                        // the AST with the thunk's captured env.
+                        ExprSubst inner_subst = build_repr_subst(vd.env);
+                        subst[fname] = print_expr(te, inner_subst);
+                    } else {
+                        // For literals and other simple exprs: try to force safely.
+                        try {
+                            ValRef forced = const_cast<Evaluator*>(this)->force(fval);
+                            std::visit([&](const auto& fvd) {
+                                using FT = std::decay_t<decltype(fvd)>;
+                                if constexpr (std::is_same_v<FT, VNum>) {
+                                    double n = fvd.n;
+                                    if (std::isfinite(n) && n == std::floor(n))
+                                        subst[fname] = std::to_string(static_cast<long long>(n));
+                                    else { std::ostringstream ss; ss << n; subst[fname] = ss.str(); }
+                                } else if constexpr (std::is_same_v<FT, VChar>) {
+                                    std::string s = "'";
+                                    char c = fvd.c;
+                                    if (c == '\'') s += "\\'";
+                                    else if (c == '\\') s += "\\\\";
+                                    else s += c;
+                                    s += "'";
+                                    subst[fname] = s;
+                                } else if constexpr (std::is_same_v<FT, VFun>) {
+                                    if (fvd.repr.has_value())
+                                        subst[fname] = *fvd.repr;
+                                }
+                            }, forced->data);
+                        } catch (...) {}
+                    }
+                }
+            }
+            // VCons, VPair, VHole — leave unsubstituted.
+        }, raw->data);
+    }
+    return subst;
+}
+
+// ---------------------------------------------------------------------------
 // eval — the main evaluator
 // ---------------------------------------------------------------------------
 
@@ -401,10 +509,24 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
         // EOpRef — operator as a value: (+)
         // ----------------------------------------------------------------
         if constexpr (std::is_same_v<T, EOpRef>) {
-            if (auto v = env_lookup(env, d.op)) return v;
-            if (auto v = env_lookup(global_env_, d.op)) return v;
-            if (functions_.count(d.op)) return make_function_val(d.op);
-            throw RuntimeError("unbound operator: " + d.op, e.loc);
+            // Look up the underlying function value, then wrap it in a new
+            // VFun that carries a "(op)" repr for printing.
+            ValRef base;
+            if (auto v = env_lookup(env, d.op)) base = v;
+            else if (auto v = env_lookup(global_env_, d.op)) base = v;
+            else if (functions_.count(d.op)) base = make_function_val(d.op);
+            else throw RuntimeError("unbound operator: " + d.op, e.loc);
+
+            // Wrap in a VFun with the printed form "(-)" etc.
+            std::string repr = "(" + d.op + ")";
+            ValRef wrapped = base; // default: reuse
+            if (auto* vf = std::get_if<VFun>(&base->data)) {
+                (void)vf;
+                // Re-wrap with repr.
+                auto apply_fn = vf->apply;
+                wrapped = make_fun(std::move(apply_fn), repr);
+            }
+            return wrapped;
         }
 
         // ----------------------------------------------------------------
@@ -426,6 +548,14 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
                 if (auto v = env_lookup(env, d.op)) return v;
                 if (auto v = env_lookup(global_env_, d.op)) return v;
                 if (functions_.count(d.op)) return make_function_val(d.op);
+                // Unary constructor used as infix (e.g. `data t == a CON b`).
+                auto it_ctor = constructor_arity_.find(d.op);
+                if (it_ctor != constructor_arity_.end() && it_ctor->second == 1) {
+                    std::string cname = d.op;
+                    return make_fun([cname](ValRef arg) -> ValRef {
+                        return make_con1(cname, arg);
+                    });
+                }
                 throw RuntimeError("unbound operator: " + d.op, e.loc);
             }();
             ValRef left_thunk  = make_thunk(d.left.get(),  env);
@@ -483,9 +613,15 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
                 func_clauses.push_back(std::move(fc));
             }
             Env captured = env;
+
+            // Compute a printable representation by substituting known values
+            // for free variables in the AST.
+            ExprSubst subst = build_repr_subst(env);
+            std::string repr = print_expr(e, subst);
+
             return make_fun([this, func_clauses = std::move(func_clauses), captured](ValRef arg) -> ValRef {
                 return apply_clauses("<lambda>", func_clauses, arg, captured);
-            });
+            }, std::move(repr));
         }
 
         // ----------------------------------------------------------------
@@ -502,18 +638,29 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
             }();
             ValRef e_val = make_thunk(d.expr.get(), env);
 
+            // Compute repr in lambda form: "lambda x' => e op x'" or
+            // "lambda x' => x' op e".  Use env substitution for the expr part.
+            ExprSubst subst = build_repr_subst(env);
+            std::string e_str = print_expr(*d.expr, subst);
+            std::string repr;
+            if (d.is_left) {
+                repr = "lambda x' => " + e_str + " " + d.op + " x'";
+            } else {
+                repr = "lambda x' => x' " + d.op + " " + e_str;
+            }
+
             if (d.is_left) {
                 // (e op): lambda y => op (e, y)
                 return make_fun([this, op_val, e_val](ValRef y) -> ValRef {
                     ValRef pair = make_pair(e_val, y);
                     return apply(force(op_val), pair);
-                });
+                }, std::move(repr));
             } else {
                 // (op e): lambda x => op (x, e)
                 return make_fun([this, op_val, e_val](ValRef x) -> ValRef {
                     ValRef pair = make_pair(x, e_val);
                     return apply(force(op_val), pair);
-                });
+                }, std::move(repr));
             }
         }
 
@@ -725,6 +872,37 @@ ValRef Evaluator::apply_clauses(const std::string& name,
             return eval(*clause.body, closed_env);
         }
 
+        // For infix-pair clauses: match pats[0] and pats[1] against the
+        // left and right sides of the single VPair argument.  If there are
+        // additional patterns (e.g., --- (f o g) x <= f(g x)), return a
+        // curried function for the remaining args.
+        if (clause.is_infix_pair && clause.pats.size() >= 2) {
+            ValRef forced = force(arg);
+            // Accept either a VPair (product) or a VCons with a VPair arg
+            // (user-defined infix constructor).
+            const VPair* pr = std::get_if<VPair>(&forced->data);
+            if (!pr) {
+                // Try VCons{op, has_arg, VPair{...}} for user-defined infix ctors
+                if (auto* vc = std::get_if<VCons>(&forced->data)) {
+                    if (vc->has_arg) {
+                        ValRef ca = force(vc->arg);
+                        pr = std::get_if<VPair>(&ca->data);
+                    }
+                }
+            }
+            if (!pr) continue;
+
+            Env match_env = closed_env;
+            if (!match(*clause.pats[0], pr->left, match_env)) continue;
+            if (!match(*clause.pats[1], pr->right, match_env)) continue;
+            if (clause.pats.size() == 2) {
+                return eval(*clause.body, match_env);
+            }
+            // Extra curried args (e.g., --- (f o g) x <= f(g x))
+            CurriedApply ca{this, &clause, 2, match_env, name};
+            return make_fun(std::move(ca));
+        }
+
         // Try to match the first pattern.
         // Do NOT force here — let match() force lazily as needed.
         Env match_env = closed_env;
@@ -753,8 +931,17 @@ bool Evaluator::match(const Pattern& p, ValRef v, Env& env) {
     return std::visit([&](const auto& pd) -> bool {
         using T = std::decay_t<decltype(pd)>;
 
-        // PVar — bind the variable
+        // PVar — bind the variable, unless the name is a known constructor,
+        // in which case treat as a nullary PCons match.
         if constexpr (std::is_same_v<T, PVar>) {
+            // Check if the name is a registered 0-arity constructor.
+            auto it = constructor_arity_.find(pd.name);
+            if (it != constructor_arity_.end() && it->second == 0) {
+                // Treat as nullary PCons: force and check name.
+                ValRef forced = force(v);
+                auto* vc = std::get_if<VCons>(&forced->data);
+                return vc && vc->name == pd.name && !vc->has_arg;
+            }
             env = env_extend(env, pd.name, v);
             return true;
         }
@@ -854,16 +1041,26 @@ bool Evaluator::match(const Pattern& p, ValRef v, Env& env) {
             if (pats.empty()) return true; // unit
 
             // Right-nested pairs: (a, b, c) = VPair{a, VPair{b, c}}
+            // We force to get the outer VPair, but we do NOT force the right
+            // sub-expression until needed.  This preserves laziness: a pattern
+            // like (x, y) matching against a lazy pair (x, thunk) should NOT
+            // force the thunk — it should simply bind y to the thunk.
             ValRef cur = force(v);
             for (size_t i = 0; i < pats.size(); ++i) {
                 if (i + 1 == pats.size()) {
-                    // Last element: match directly
+                    // Last element: match directly (may be a thunk).
+                    // Do NOT force cur here — let match() handle laziness.
                     return match(*pats[i], cur, env);
                 }
+                // Not last: need to destructure as a VPair.
+                // Force cur to expose the VPair structure.
+                cur = force(cur);
                 auto* pr = std::get_if<VPair>(&cur->data);
                 if (!pr) return false;
                 if (!match(*pats[i], pr->left, env)) return false;
-                cur = force(pr->right);
+                // Advance to the right sub-pair WITHOUT forcing it.
+                // This preserves laziness of the remaining elements.
+                cur = pr->right;
             }
             return true;
         }
@@ -918,7 +1115,16 @@ bool Evaluator::match_infix(const PInfix& pi, ValRef v, Env& env) {
         return match(*pi.right, pr->right, env);
     }
 
-    // User-defined infix constructor: the constructor has an arg which is a pair
+    // User-defined infix constructor: the constructor has an arg which is a pair.
+    // Also handle VPair directly for product-functor operators like # and ->
+    // that are declared as abstype (not data constructors), where the value is
+    // represented as a plain pair rather than a tagged VCons.
+    if (auto* pr = std::get_if<VPair>(&forced->data)) {
+        // Treat VPair as matching any infix pair pattern (a op b).
+        if (!match(*pi.left, pr->left, env)) return false;
+        return match(*pi.right, pr->right, env);
+    }
+
     auto* vc = std::get_if<VCons>(&forced->data);
     if (!vc || vc->name != pi.op) return false;
     if (!vc->has_arg) return false;
@@ -957,18 +1163,49 @@ void Evaluator::process_equation(const DEquation& d, SourceLocation /*loc*/) {
     // Build a FuncClause from the equation's arg patterns and body.
     // Use raw pointers into the AST — the Decl is kept alive in owned_decls_.
     FuncClause clause;
-    for (const auto& arg_pat : d.lhs.args)
-        clause.pats.push_back(arg_pat.get());
     clause.body = d.rhs.get();
+
+    // An infix equation (is_infix=true, args.size()>=2) is always called with
+    // a single VPair{left, right} as its first argument.  The first two arg
+    // patterns match the left and right sides of that pair.  Any additional
+    // patterns (e.g., --- (f o g) x <= f(g x)) are curried extra arguments.
+    //
+    // Examples:
+    //   --- [] <> ys <= ys           is_infix, args=[PCons{nil}, PVar{ys}]
+    //   --- (x::xs) <> ys <= ...     is_infix, args=[PInfix{x,"::",xs}, PVar{ys}]
+    //   --- (x::xs)@0 <= x           is_infix, args=[PInfix{x,"::",xs}, PLit{0}]
+    //   --- (f o g) x <= f(g x)      is_infix, args=[PVar{f}, PVar{g}, PVar{x}]
+    if (d.lhs.is_infix && d.lhs.args.size() >= 2) {
+        for (const auto& arg_pat : d.lhs.args)
+            clause.pats.push_back(arg_pat.get());
+        clause.is_infix_pair = true;
+    } else {
+        for (const auto& arg_pat : d.lhs.args)
+            clause.pats.push_back(arg_pat.get());
+    }
 
     auto& func_def = functions_[fname];
     if (func_def.name.empty())
         func_def.name = fname;
     func_def.clauses.push_back(std::move(clause));
 
-    // Update the global env with the new function value.
-    // (Previously registered versions are superseded by this new one.)
-    ValRef fval = make_function_val(fname);
+    // Update the global env with the appropriate value.
+    // If all clauses have zero argument patterns, this is a constant definition
+    // (e.g. --- primes <= sieve ...).  Register a thunk so it is evaluated
+    // lazily but not treated as a function that needs an argument.
+    // If any clause has patterns, register a VFun dispatcher.
+    bool all_zero_arg = true;
+    for (const auto& cl : func_def.clauses) {
+        if (!cl.pats.empty()) { all_zero_arg = false; break; }
+    }
+
+    ValRef fval;
+    if (all_zero_arg && func_def.clauses.size() == 1) {
+        // Single 0-arg clause: register as a thunk over the body.
+        fval = make_thunk(func_def.clauses[0].body, global_env_);
+    } else {
+        fval = make_function_val(fname);
+    }
     // Remove old binding and add new one
     global_env_ = env_extend(global_env_, fname, fval);
 }
@@ -1140,6 +1377,46 @@ void Evaluator::init_builtins() {
             return make_bool(cmp_vals(a, b, op_str));
         });
     }
+
+    // --- compare : alpha # alpha -> relation ---
+    // Returns LESS, EQUAL, or GREATER.  Used by Standard.hop's comparison
+    // equations (=, /=, <, >, =<, >=).
+    constructor_arity_["LESS"]    = 0;
+    constructor_arity_["EQUAL"]   = 0;
+    constructor_arity_["GREATER"] = 0;
+
+    register_builtin("compare", [this, get_pair](ValRef v) -> ValRef {
+        auto [a, b] = get_pair(v);
+        ValRef fa = force(a), fb = force(b);
+
+        // Numeric comparison
+        if (auto* an = std::get_if<VNum>(&fa->data)) {
+            if (auto* bn = std::get_if<VNum>(&fb->data)) {
+                if (an->n < bn->n) return make_con0("LESS");
+                if (an->n > bn->n) return make_con0("GREATER");
+                return make_con0("EQUAL");
+            }
+        }
+        // Character comparison
+        if (auto* ac = std::get_if<VChar>(&fa->data)) {
+            if (auto* bc = std::get_if<VChar>(&fb->data)) {
+                if (ac->c < bc->c) return make_con0("LESS");
+                if (ac->c > bc->c) return make_con0("GREATER");
+                return make_con0("EQUAL");
+            }
+        }
+        // Constructor comparison (by name — for relation / bool / user-defined nullary)
+        if (auto* ac = std::get_if<VCons>(&fa->data)) {
+            if (auto* bc = std::get_if<VCons>(&fb->data)) {
+                int cmp = ac->name.compare(bc->name);
+                if (cmp < 0) return make_con0("LESS");
+                if (cmp > 0) return make_con0("GREATER");
+                return make_con0("EQUAL");
+            }
+        }
+        throw RuntimeError("compare: cannot compare these values",
+                           SourceLocation{"<runtime>", 0, 0, 0});
+    });
 
     // --- Boolean operators (short-circuit via lazy args) ---
 
@@ -1380,6 +1657,42 @@ void Evaluator::init_builtins() {
         ValRef result = b;
         for (auto it = elems.rbegin(); it != elems.rend(); ++it) {
             result = make_cons(*it, result);
+        }
+        return result;
+    });
+
+    // --- File I/O ---
+
+    // read : list char -> list char
+    // Reads the named file and returns its contents as a Hope list of chars.
+    register_builtin("read", [this](ValRef v) -> ValRef {
+        // Convert Hope string (list char) to C++ string filename
+        std::string filename;
+        ValRef cur = force(v);
+        while (true) {
+            auto* vc = std::get_if<VCons>(&cur->data);
+            if (!vc || vc->name == "nil") break;
+            if (vc->name != "::") break;
+            ValRef arg = force(vc->arg);
+            auto* pr = std::get_if<VPair>(&arg->data);
+            if (!pr) break;
+            ValRef head = force(pr->left);
+            auto* ch = std::get_if<VChar>(&head->data);
+            if (!ch) break;
+            filename += ch->c;
+            cur = force(pr->right);
+        }
+        std::ifstream f(filename, std::ios::binary);
+        if (!f.is_open()) {
+            throw RuntimeError("read: cannot open file: " + filename,
+                               SourceLocation{"<runtime>", 0, 0, 0});
+        }
+        std::string contents((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+        // Build a lazy Hope string (list of chars) from back to front
+        ValRef result = make_nil();
+        for (auto it = contents.rbegin(); it != contents.rend(); ++it) {
+            result = make_cons(make_char(*it), result);
         }
         return result;
     });

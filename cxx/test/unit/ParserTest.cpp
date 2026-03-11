@@ -343,7 +343,8 @@ TEST(ParserDecl, Equation_OpRef_LHS) {
 TEST(ParserDecl, Uses) {
     auto d = parse1("uses Standard;");
     ASSERT_TRUE(is_decl<DUses>(d));
-    EXPECT_EQ(as_decl<DUses>(d).module_name, "Standard");
+    ASSERT_FALSE(as_decl<DUses>(d).module_names.empty());
+    EXPECT_EQ(as_decl<DUses>(d).module_names[0], "Standard");
 }
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -20,14 +21,21 @@ struct Value;
 using ValRef = std::shared_ptr<Value>;
 
 // ---------------------------------------------------------------------------
-// Environment: immutable linked-list of named bindings, vector-based.
+// Environment: persistent singly-linked list of named bindings.
+//
+// env_extend is O(1): it prepends a new node to the front of the list.
+// env_lookup is O(n): it walks from the most-recent binding to the oldest.
+// Closures share their parent environment without copying.
 // ---------------------------------------------------------------------------
 
-struct EnvFrame {
-    std::string name;
-    ValRef      val;
+struct EnvNode {
+    std::string              name;
+    ValRef                   val;
+    std::shared_ptr<EnvNode> next;
 };
-using Env = std::shared_ptr<std::vector<EnvFrame>>;
+
+// Env is a (nullable) pointer to the head of the binding chain.
+using Env = std::shared_ptr<EnvNode>;
 
 // ---------------------------------------------------------------------------
 // Value alternatives
@@ -47,6 +55,7 @@ struct VPair  { ValRef left; ValRef right; }; // product pair (a # b)
 
 struct VFun   {                               // function value (closure or built-in)
     std::function<ValRef(ValRef)> apply;
+    std::optional<std::string> repr;          // printable representation (if known)
 };
 
 struct VThunk {                               // unevaluated lazy closure
@@ -100,8 +109,9 @@ inline ValRef make_con1(std::string name, ValRef arg) {
     return std::make_shared<Value>(VCons{std::move(name), true, std::move(arg)});
 }
 
-inline ValRef make_fun(std::function<ValRef(ValRef)> f) {
-    return std::make_shared<Value>(VFun{std::move(f)});
+inline ValRef make_fun(std::function<ValRef(ValRef)> f,
+                       std::optional<std::string> repr = std::nullopt) {
+    return std::make_shared<Value>(VFun{std::move(f), std::move(repr)});
 }
 
 inline ValRef make_thunk(const Expr* e, Env env) {
@@ -112,21 +122,24 @@ inline ValRef make_thunk(const Expr* e, Env env) {
 // Environment helpers
 // ---------------------------------------------------------------------------
 
-inline Env make_env(std::vector<EnvFrame> frames = {}) {
-    return std::make_shared<std::vector<EnvFrame>>(std::move(frames));
+// Create an empty environment.
+inline Env make_env() {
+    return nullptr;
 }
 
+// Return a new environment with name->val prepended to base.  O(1).
 inline Env env_extend(Env base, std::string name, ValRef val) {
-    auto frames = *base; // copy the vector
-    frames.push_back({std::move(name), std::move(val)});
-    return std::make_shared<std::vector<EnvFrame>>(std::move(frames));
+    auto node = std::make_shared<EnvNode>();
+    node->name = std::move(name);
+    node->val  = std::move(val);
+    node->next = std::move(base);
+    return node;
 }
 
-// Search from back (most recent binding first).
+// Search from the most-recently-bound name.  Returns nullptr if not found.
 inline ValRef env_lookup(const Env& env, const std::string& name) {
-    const auto& frames = *env;
-    for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
-        if (it->name == name) return it->val;
+    for (const EnvNode* n = env.get(); n; n = n->next.get()) {
+        if (n->name == name) return n->val;
     }
     return nullptr;
 }

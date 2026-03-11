@@ -212,16 +212,20 @@ Decl Parser::parse_data_decl() {
 
         // Check for infix constructor form: typearg op typearg
         // e.g. alpha :: list alpha   (where :: is declared infix)
-        // Detect: first token is IDENT (type param), followed by an OPERATOR
+        // Detect: first token is IDENT (type param), followed by an OPERATOR or
+        // an infix-declared IDENT (like COMMA after `infix COMMA: 3;`).
         if (peek().kind == TokenKind::IDENT) {
-            // Peek ahead: if the token after this IDENT is an OPERATOR (not ++, ==, ;),
-            // treat it as infix constructor form
+            // Peek ahead: if the token after this IDENT is an OPERATOR (not ++, ==, ;)
+            // or an IDENT that is a declared infix operator, treat as infix constructor.
             std::string first = peek().text;
             advance(); // consume the first IDENT (type param or constructor name)
-            if (peek().kind == TokenKind::OPERATOR &&
-                peek().text != "++" && peek().text != "==" && peek().text != ";") {
+            bool next_is_infix_op =
+                (peek().kind == TokenKind::OPERATOR &&
+                 peek().text != "++" && peek().text != "==" && peek().text != ";") ||
+                (peek().kind == TokenKind::IDENT && ops_.lookup(peek().text));
+            if (next_is_infix_op) {
                 // Infix constructor: first was a type param, next is the constructor name
-                cname = advance().text; // consume operator as constructor name
+                cname = advance().text; // consume operator/ident as constructor name
                 // The argument type is a product of the two type args
                 // Parse the remaining type arg (right side)
                 TypePtr right_type = parse_type_atom();
@@ -399,14 +403,18 @@ Decl Parser::parse_uses_decl() {
 
     try_load(mod);
 
+    std::vector<std::string> all_names;
+    all_names.push_back(std::move(mod));
+
     // Multiple modules: uses list, seq;
     while (match(TokenKind::COMMA)) {
         std::string extra = expect(TokenKind::IDENT, "in uses declaration").text;
         try_load(extra);
+        all_names.push_back(std::move(extra));
     }
     expect(TokenKind::SEMICOLON, "at end of uses declaration");
 
-    return Decl{DUses{std::move(mod)}, loc};
+    return Decl{DUses{std::move(all_names)}, loc};
 }
 
 Decl Parser::parse_command_or_eval() {
@@ -660,24 +668,28 @@ PatPtr Parser::parse_pattern_app() {
 
         const Token& nx = peek();
         if (nx.kind == TokenKind::LPAREN) {
-            // ident(arg) — constructor application (parens force it)
+            // ident(arg) — constructor application for any ident.
+            // In Hope, both uppercase and lowercase constructors can be applied
+            // with parenthesised arguments: node(l,v,r), leaf(n), nil, etc.
             PatPtr arg = parse_pattern_atom(); // will consume (...)
             return make_pat(PCons{std::move(cname), std::move(arg)}, loc);
         }
-        // No LPAREN: uppercase ident can take atom arg (LBRACKET, lit, or lowercase ident)
+        // No LPAREN: ident can take an atom arg (literal or [ ]),
+        // but NOT a bare lowercase identifier (which would be ambiguous with
+        // two separate variable patterns in an equation LHS).
         bool arg_follows =
             nx.kind == TokenKind::LBRACKET  ||
             nx.kind == TokenKind::INT_LIT   ||
             nx.kind == TokenKind::CHAR_LIT  ||
-            nx.kind == TokenKind::STR_LIT   ||
-            (nx.kind == TokenKind::IDENT && !nx.text.empty() &&
-             std::islower(static_cast<unsigned char>(nx.text[0])));
+            nx.kind == TokenKind::STR_LIT;
         if (arg_follows && !cname.empty() &&
             std::isupper(static_cast<unsigned char>(cname[0]))) {
             PatPtr arg = parse_pattern_atom();
             return make_pat(PCons{std::move(cname), std::move(arg)}, loc);
         }
-        // Bare identifier — variable pattern (or nullary constructor)
+        // Bare identifier — variable pattern.
+        // Constructor vs variable resolution is deferred to the evaluator,
+        // which checks constructor_arity_ at runtime.
         return make_pat(PVar{std::move(cname)}, loc);
     }
 
@@ -760,6 +772,56 @@ PatPtr Parser::parse_pattern_atom() {
         // Empty parens is a parse error in patterns — but '()' is valid as unit in some languages.
         // In Hope, '()' doesn't exist; '(p)' is just p.
         PatPtr first = parse_pattern();
+        // Post-fixup for constructor-with-arg inside parentheses:
+        //
+        // Case 1: nullary PCons (uppercase or known-ctor) followed by an arg token
+        //   → absorb the arg.  (Just x), (LESS _), (Ctor (a,b)), etc.
+        //
+        // Case 2: PVar (lowercase) followed by '(' with content
+        //   → must be a constructor applied to a parenthesised arg, e.g. (leaf(n)).
+        //   Retroactively convert to PCons.
+        //
+        // Both cases only apply when the next token is not ',' or ')'.
+        {
+            const Token& nx = peek();
+            if (auto* pc = std::get_if<PCons>(&first->data)) {
+                if (!pc->arg.has_value()) {
+                    bool arg_could_follow =
+                        nx.kind == TokenKind::LPAREN   ||
+                        nx.kind == TokenKind::LBRACKET ||
+                        nx.kind == TokenKind::INT_LIT  ||
+                        nx.kind == TokenKind::CHAR_LIT ||
+                        nx.kind == TokenKind::STR_LIT  ||
+                        (nx.kind == TokenKind::IDENT   &&
+                         nx.text != "in" && nx.text != "=>");
+                    if (arg_could_follow) {
+                        pc->arg = parse_pattern_atom();
+                    }
+                }
+            } else if (auto* pv = std::get_if<PVar>(&first->data)) {
+                // PVar followed by a potential argument → constructor(arg) form.
+                // E.g. (Yes x) → PCons{"Yes", PVar{"x"}}
+                //      (leaf(n)) → PCons{"leaf", PTuple{PVar{"n"}}}
+                //      (Ctor []) → PCons{"Ctor", PCons{"nil"}}
+                bool arg_could_follow =
+                    nx.kind == TokenKind::LPAREN   ||
+                    nx.kind == TokenKind::LBRACKET ||
+                    nx.kind == TokenKind::INT_LIT  ||
+                    nx.kind == TokenKind::CHAR_LIT ||
+                    nx.kind == TokenKind::STR_LIT  ||
+                    (nx.kind == TokenKind::IDENT   &&
+                     nx.text != "in"  && nx.text != "=>" &&
+                     nx.text != "_");  // '_' handled separately below
+                // Also handle '_' as wildcard arg
+                bool wild_arg = (nx.kind == TokenKind::IDENT && nx.text == "_");
+                if (arg_could_follow || wild_arg) {
+                    std::string cname = pv->name;
+                    SourceLocation first_loc = first->loc;
+                    PatPtr arg = parse_pattern_atom();
+                    first = make_pat(PCons{std::move(cname), std::move(arg)}, first_loc);
+                }
+            }
+        }
         if (match(TokenKind::COMMA)) {
             // Tuple pattern
             std::vector<PatPtr> elems;
@@ -837,12 +899,39 @@ EquationLHS Parser::parse_equation_lhs() {
             is_infix_form = true;
 
         if (is_infix_form) {
-            std::string op_name = advance().text; // consume the operator
+            // Parse the first operator.
+            std::string op1_name = advance().text; // consume op1
+            auto op1_info = ops_.lookup(op1_name);
+            int op1_prec = op1_info ? op1_info->prec : 5; // default :: prec
+
+            // Parse the rest as a full pattern (may itself be an infix pattern).
             PatPtr right = parse_pattern();
+
+            // Check if the right side is a PInfix whose operator has LOWER
+            // precedence than op1.  If so, op2 is the real function being
+            // defined (e.g. --- x::xs || ys  →  function=||, args=[x::xs, ys]).
+            if (auto* ri = std::get_if<PInfix>(&right->data)) {
+                auto op2_info = ops_.lookup(ri->op);
+                int op2_prec = op2_info ? op2_info->prec : 5;
+                if (op2_prec < op1_prec) {
+                    // Restructure: the left arg of op2 is "fname op1 ri->left"
+                    // e.g. (x::xs) is left of ||
+                    PatPtr left_of_op1 = make_pat(PVar{std::move(fname)}, loc);
+                    PatPtr left_pat = make_pat(
+                        PInfix{op1_name, std::move(left_of_op1), std::move(ri->left)},
+                        loc);
+                    std::string func = ri->op;
+                    std::vector<PatPtr> args2;
+                    args2.push_back(std::move(left_pat));
+                    args2.push_back(std::move(ri->right));
+                    return EquationLHS{ std::move(func), std::move(args2), true };
+                }
+            }
+
             std::vector<PatPtr> args;
             args.push_back(make_pat(PVar{std::move(fname)}, loc));
             args.push_back(std::move(right));
-            return EquationLHS{ std::move(op_name), std::move(args), true };
+            return EquationLHS{ std::move(op1_name), std::move(args), true };
         }
 
         // Prefix form: fname followed by zero or more pattern atoms until <=
@@ -866,12 +955,17 @@ EquationLHS Parser::parse_equation_lhs() {
         return EquationLHS{ std::move(func), std::move(args), false };
     }
 
-    // Case B: first_pat is PInfix — operator equation with infix LHS pattern.
-    // e.g. --- (f /\ g) x <= ...    or   --- n..m <= ...  (already handled above for IDENT)
+    // Case B: first_pat is PInfix — infix operator equation.
+    // e.g. --- (h :: t) cat1 r <= ...  defines cat1 with args [h::t, r]
+    // e.g. --- (f /\ g) x <= ...       defines /\ with args [f, g, x]
+    // The PInfix holds: op=function_name, left=first_arg, right=second_arg.
+    // Any additional patterns after the PInfix are extra args.
     if (std::holds_alternative<PInfix>(first_pat->data)) {
-        std::string func = std::get<PInfix>(first_pat->data).op;
+        auto& pinfix = std::get<PInfix>(first_pat->data);
+        std::string func = pinfix.op;
         std::vector<PatPtr> args;
-        args.push_back(std::move(first_pat));
+        args.push_back(std::move(pinfix.left));
+        args.push_back(std::move(pinfix.right));
         while (!check_op("<=") && !at_end())
             args.push_back(parse_pattern());
         return EquationLHS{ std::move(func), std::move(args), true };
