@@ -8,17 +8,24 @@
 
 int main(int argc, char* argv[]) {
     // Determine the library directory.
-    // Priority: HOPEPATH environment variable > executable-relative ../lib.
+    // Priority:
+    //   1. HOPEPATH environment variable
+    //   2. HOPELIB compile-time constant (set by CMake to CMAKE_SOURCE_DIR/../lib)
+    //   3. Executable-relative fallback
     std::string lib_dir;
     if (const char* hopepath = std::getenv("HOPEPATH")) {
         lib_dir = hopepath;
     } else {
+#ifdef HOPELIB
+        lib_dir = HOPELIB;
+#else
         try {
             auto exe = std::filesystem::canonical(argv[0]);
             lib_dir = (exe.parent_path().parent_path() / "lib").string();
         } catch (...) {
             lib_dir = ".";
         }
+#endif
     }
 
     // Parse arguments: hope [-f <file.hop>]

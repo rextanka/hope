@@ -20,6 +20,8 @@ set(INTEGRATION_TESTS
     sections
     io
     type_errs
+    maybe
+    seq
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)

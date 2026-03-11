@@ -246,6 +246,7 @@ Decl Parser::parse_data_decl() {
             cname = expect(TokenKind::IDENT, "constructor name").text;
         }
 
+        known_constructors_.insert(cname);
         alts.push_back(Constructor{std::move(cname), std::move(arg), cloc});
     } while (match_op("++"));
 
@@ -341,7 +342,7 @@ void Parser::load_infix_from_file(const std::string& filepath) {
     try {
         Lexer sub_lex(ss.str(), filepath);
         Parser sub(std::move(sub_lex));
-        // Scan the whole file: extract infix declarations, skip everything else.
+        // Scan the whole file: extract infix declarations and constructor names.
         while (!sub.at_end()) {
             const Token& t = sub.peek();
             if (t.kind == TokenKind::KW_INFIX || t.kind == TokenKind::KW_INFIXR) {
@@ -356,6 +357,9 @@ void Parser::load_infix_from_file(const std::string& filepath) {
                 // registered all names in sub.ops_, but we only copy the first here.
                 // For full correctness we'd need all names; for now this is sufficient
                 // for the common single-name case.
+            } else if (t.kind == TokenKind::KW_DATA) {
+                // Parse the data declaration so constructors are registered in sub.
+                try { sub.parse_data_decl(); } catch (...) { sub.advance(); }
             } else if (t.kind == TokenKind::KW_USES) {
                 // Follow transitive uses to load their operators too
                 sub.parse_uses_decl();
@@ -366,6 +370,10 @@ void Parser::load_infix_from_file(const std::string& filepath) {
                 sub.advance();
             }
         }
+        // Copy constructor names discovered in the sub-parser (and any transitive
+        // modules it loaded) into our own known_constructors_ set.
+        for (const auto& name : sub.known_constructors())
+            known_constructors_.insert(name);
     } catch (...) {
         // Ignore errors in sub-parsing; just use what we got
     }
@@ -666,24 +674,29 @@ PatPtr Parser::parse_pattern_app() {
             return make_pat(PNPlusK{std::move(cname), std::stoi(k_tok.text)}, loc);
         }
 
+        // Determine if this identifier is a constructor.
+        // In Hope, constructors can be lowercase (e.g. node, leaf, empty),
+        // so we use the known_constructors_ set populated from data declarations,
+        // plus capitalisation as a fallback for constructors not yet declared
+        // (e.g. uppercase constructors from modules loaded after parse time).
+        bool is_ctor = !cname.empty() &&
+                       (std::isupper(static_cast<unsigned char>(cname[0])) ||
+                        known_constructors_.count(cname));
+
         const Token& nx = peek();
-        if (nx.kind == TokenKind::LPAREN) {
-            // ident(arg) — constructor application for any ident.
-            // In Hope, both uppercase and lowercase constructors can be applied
-            // with parenthesised arguments: node(l,v,r), leaf(n), nil, etc.
+        if (nx.kind == TokenKind::LPAREN && is_ctor) {
+            // Constructor(arg) — constructor applied to a parenthesised argument.
             PatPtr arg = parse_pattern_atom(); // will consume (...)
             return make_pat(PCons{std::move(cname), std::move(arg)}, loc);
         }
-        // No LPAREN: ident can take an atom arg (literal or [ ]),
-        // but NOT a bare lowercase identifier (which would be ambiguous with
-        // two separate variable patterns in an equation LHS).
+        // No LPAREN: a known constructor can take an atom arg (literal or [ ]).
+        // Unknown (lowercase) idents are variables and never consume an atom arg.
         bool arg_follows =
             nx.kind == TokenKind::LBRACKET  ||
             nx.kind == TokenKind::INT_LIT   ||
             nx.kind == TokenKind::CHAR_LIT  ||
             nx.kind == TokenKind::STR_LIT;
-        if (arg_follows && !cname.empty() &&
-            std::isupper(static_cast<unsigned char>(cname[0]))) {
+        if (arg_follows && is_ctor) {
             PatPtr arg = parse_pattern_atom();
             return make_pat(PCons{std::move(cname), std::move(arg)}, loc);
         }

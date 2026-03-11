@@ -1,0 +1,11 @@
+uses maybe;
+dec safe_head : list alpha -> maybe alpha;
+--- safe_head [] <= No;
+--- safe_head (x::xs) <= Yes x;
+dec safe_div : num -> num -> maybe num;
+--- safe_div x 0 <= No;
+--- safe_div x y <= Yes (x div y);
+safe_head [1,2,3];
+safe_head [];
+safe_div 10 2;
+safe_div 7 0;
