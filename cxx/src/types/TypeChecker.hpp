@@ -103,7 +103,7 @@ private:
     // -----------------------------------------------------------------------
     // Collect free type-variable names from an AST type expression.
     // -----------------------------------------------------------------------
-    static void collect_tvars(const Type& t, std::vector<std::string>& out);
+    void collect_tvars(const Type& t, std::vector<std::string>& out);
 
     // -----------------------------------------------------------------------
     // Local variable environment
@@ -153,6 +153,8 @@ private:
     // -----------------------------------------------------------------------
 
     [[noreturn]] void error(const std::string& msg, SourceLocation loc);
+    [[noreturn]] void error(const std::string& msg, SourceLocation loc,
+                            std::vector<std::string> context);
 };
 
 } // namespace hope

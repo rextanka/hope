@@ -187,7 +187,7 @@ struct DEquation {
     ExprPtr     rhs;
 };
 
-struct DUses    { std::string module_name; };
+struct DUses    { std::vector<std::string> module_names; };
 struct DPrivate {};
 struct DSave    { std::string module_name; };
 struct DDisplay {};

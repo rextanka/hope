@@ -30,6 +30,29 @@ static TypePtr tprod_ast(TypePtr l, TypePtr r) {
     return make_type(TProd{std::move(l), std::move(r)}, builtin);
 }
 
+static TypePtr tfun_ast(TypePtr dom, TypePtr cod) {
+    SourceLocation builtin{"<builtin>", 0, 0, 0};
+    return make_type(TFun{std::move(dom), std::move(cod)}, builtin);
+}
+
+static TypePtr tnum() { return tcons0("num"); }
+static TypePtr tchar() { return tcons0("char"); }
+static TypePtr tbool() { return tcons0("bool"); }
+static TypePtr tstr() { return tcons1("list", tchar()); }
+static TypePtr tlist_a() { return tcons1("list", tvar_ast("alpha")); }
+
+// Helper to create a FuncDecl for a builtin function with given params and type.
+static FuncDecl make_builtin_fd(std::string name,
+                                std::vector<std::string> params,
+                                TypePtr type) {
+    FuncDecl fd;
+    fd.names  = {std::move(name)};
+    fd.params = std::move(params);
+    fd.type   = std::move(type);
+    fd.loc    = SourceLocation{"<builtin>", 0, 0, 0};
+    return fd;
+}
+
 // ---------------------------------------------------------------------------
 // Helper — register a typedef into the map and index its constructors
 // ---------------------------------------------------------------------------
@@ -185,6 +208,89 @@ TypeEnv::TypeEnv() {
         td.def    = std::monostate{};
         register_typedef(typedefs_, condecls_, std::move(td));
     }
+
+    // -----------------------------------------------------------------------
+    // Built-in function declarations
+    // -----------------------------------------------------------------------
+
+    // Arithmetic: num # num -> num
+    for (const char* op : {"+", "-", "*", "/", "div", "mod"}) {
+        add_funcdecl(make_builtin_fd(op, {},
+            tfun_ast(tprod_ast(tnum(), tnum()), tnum())));
+    }
+
+    // Unary numeric: num -> num
+    for (const char* op : {"~", "neg", "abs", "sqrt", "floor",
+                            "ceiling", "round", "trunc", "float",
+                            "succ", "pred"}) {
+        add_funcdecl(make_builtin_fd(op, {}, tfun_ast(tnum(), tnum())));
+    }
+
+    // Comparison: alpha # alpha -> bool
+    for (const char* op : {"=", "/=", "<", ">", "=<", ">="}) {
+        add_funcdecl(make_builtin_fd(op, {"alpha"},
+            tfun_ast(tprod_ast(tvar_ast("alpha"), tvar_ast("alpha")),
+                     tbool())));
+    }
+
+    // Boolean: bool # bool -> bool
+    for (const char* op : {"and", "or"}) {
+        add_funcdecl(make_builtin_fd(op, {},
+            tfun_ast(tprod_ast(tbool(), tbool()), tbool())));
+    }
+
+    // not: bool -> bool
+    add_funcdecl(make_builtin_fd("not", {}, tfun_ast(tbool(), tbool())));
+
+    // ord: char -> num, chr: num -> char
+    add_funcdecl(make_builtin_fd("ord", {}, tfun_ast(tchar(), tnum())));
+    add_funcdecl(make_builtin_fd("chr", {}, tfun_ast(tnum(), tchar())));
+
+    // num2str: num -> list char, str2num: list char -> num
+    add_funcdecl(make_builtin_fd("num2str", {}, tfun_ast(tnum(), tstr())));
+    add_funcdecl(make_builtin_fd("str2num", {}, tfun_ast(tstr(), tnum())));
+
+    // id: alpha -> alpha
+    add_funcdecl(make_builtin_fd("id", {"alpha"},
+        tfun_ast(tvar_ast("alpha"), tvar_ast("alpha"))));
+
+    // const: alpha -> beta -> alpha
+    add_funcdecl(make_builtin_fd("const", {"alpha", "beta"},
+        tfun_ast(tvar_ast("alpha"),
+                 tfun_ast(tvar_ast("beta"), tvar_ast("alpha")))));
+
+    // o: (beta -> gamma) # (alpha -> beta) -> alpha -> gamma
+    add_funcdecl(make_builtin_fd("o", {"alpha", "beta", "gamma"},
+        tfun_ast(tprod_ast(
+                     tfun_ast(tvar_ast("beta"), tvar_ast("gamma")),
+                     tfun_ast(tvar_ast("alpha"), tvar_ast("beta"))),
+                 tfun_ast(tvar_ast("alpha"), tvar_ast("gamma")))));
+
+    // fst: alpha # beta -> alpha, snd: alpha # beta -> beta
+    add_funcdecl(make_builtin_fd("fst", {"alpha", "beta"},
+        tfun_ast(tprod_ast(tvar_ast("alpha"), tvar_ast("beta")),
+                 tvar_ast("alpha"))));
+    add_funcdecl(make_builtin_fd("snd", {"alpha", "beta"},
+        tfun_ast(tprod_ast(tvar_ast("alpha"), tvar_ast("beta")),
+                 tvar_ast("beta"))));
+
+    // head: list alpha -> alpha, tail: list alpha -> list alpha
+    add_funcdecl(make_builtin_fd("head", {"alpha"},
+        tfun_ast(tlist_a(), tvar_ast("alpha"))));
+    add_funcdecl(make_builtin_fd("tail", {"alpha"},
+        tfun_ast(tlist_a(), tlist_a())));
+
+    // null: list alpha -> bool
+    add_funcdecl(make_builtin_fd("null", {"alpha"},
+        tfun_ast(tlist_a(), tbool())));
+
+    // <> (append): list alpha # list alpha -> list alpha
+    add_funcdecl(make_builtin_fd("<>", {"alpha"},
+        tfun_ast(tprod_ast(tlist_a(), tlist_a()), tlist_a())));
+
+    // error: list char -> alpha
+    add_funcdecl(make_builtin_fd("error", {"alpha"},
+        tfun_ast(tstr(), tvar_ast("alpha"))));
 }
 
 // ---------------------------------------------------------------------------

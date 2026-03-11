@@ -12,8 +12,8 @@ file(GLOB_RECURSE HOPE_LIB_SOURCES CONFIGURE_DEPENDS
     runtime/*.cpp         # Phase 3
     builtins/*.cpp        # Phase 3
     modules/*.cpp         # Phase 3
-    # printer/*.cpp       — added in Phase 4
-    # repl/*.cpp          — added in Phase 4
+    printer/*.cpp         # Phase 4
+    repl/*.cpp            # Phase 4
     # errors/*.cpp        — added in Phase 4
 )
 

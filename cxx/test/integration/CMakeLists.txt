@@ -9,6 +9,9 @@ set(HOPE_BIN  $<TARGET_FILE:hope>)
 set(INPUT_DIR ${CMAKE_SOURCE_DIR}/../test)
 set(EXPECT_DIR ${CMAKE_SOURCE_DIR}/test/expected)
 set(HOPEPATH  ${CMAKE_SOURCE_DIR}/../lib)
+# Working directory for tests: src/ is a sibling of test/ so that
+# relative paths like "../test/foo" inside .in files resolve correctly.
+set(TEST_WORKDIR ${CMAKE_SOURCE_DIR}/../src)
 
 set(INTEGRATION_TESTS
     hope_tut
@@ -27,8 +30,9 @@ foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)
             -DINPUT=${INPUT_DIR}/${TEST_NAME}.in
             -DEXPECTED=${EXPECT_DIR}/${TEST_NAME}.out
             -DHOPEPATH=${HOPEPATH}
+            -DWORKDIR=${TEST_WORKDIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/run_hope_test.cmake
     )
-    # Mark as disabled until the evaluator is implemented (Phase 3).
-    set_tests_properties("integration_${TEST_NAME}" PROPERTIES DISABLED TRUE)
+    # Integration tests enabled in Phase 4.
+    # set_tests_properties("integration_${TEST_NAME}" PROPERTIES DISABLED TRUE)
 endforeach()

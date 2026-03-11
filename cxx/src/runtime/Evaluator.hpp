@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ast/Ast.hpp"
+#include "printer/ExprPrinter.hpp"
 #include "runtime/Value.hpp"
 #include "types/TypeEnv.hpp"
 
@@ -68,8 +69,10 @@ public:
     // (which is stable because owned_decls_ keeps the Decls alive).
     // Made public so the anonymous-namespace CurriedApply helper can use it.
     struct FuncClause {
-        std::vector<const Pattern*> pats;  // argument patterns (raw, non-owning)
-        const Expr*                 body;  // body expression (raw, non-owning)
+        std::vector<const Pattern*> pats;        // argument patterns (raw, non-owning)
+        const Expr*                 body;        // body expression (raw, non-owning)
+        bool                        is_infix_pair = false; // infix operator: match pats[0,1]
+                                                            // against left/right of a single VPair
     };
 
 private:
@@ -84,6 +87,10 @@ private:
     // so that raw pointers into their AST nodes (patterns, body) remain
     // stable even as more declarations are added.
     std::vector<std::unique_ptr<Decl>> owned_decls_;
+
+    // Synthetic patterns created for infix equations (owned here so that raw
+    // pointers into them from FuncClause remain stable).
+    std::vector<std::unique_ptr<Pattern>> synthetic_pats_;
 
     std::unordered_map<std::string, FuncDef> functions_;
 
@@ -144,6 +151,14 @@ private:
     static double   parse_num_literal(const std::string& text);
     static char     parse_char_literal(const std::string& text);
     static ValRef   string_to_list(const std::string& text); // converts "hello" -> list of VChar
+
+    // ---------------------------------------------------------------------------
+    // Repr helpers
+    // ---------------------------------------------------------------------------
+
+    // Build an ExprSubst mapping free variable names to their value reprs,
+    // used when computing printable representations of lambdas and sections.
+    ExprSubst build_repr_subst(const Env& env) const;
 
 };
 

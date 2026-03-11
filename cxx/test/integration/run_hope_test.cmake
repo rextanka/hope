@@ -5,13 +5,14 @@
 #   INPUT     — path to the .in file
 #   EXPECTED  — path to the .out file
 #   HOPEPATH  — value of HOPEPATH environment variable
+#   WORKDIR   — working directory (src/ sibling of test/ so ../test/ resolves)
 
 execute_process(
-    COMMAND ${HOPE} -f ${INPUT}
+    COMMAND ${CMAKE_COMMAND} -E env "HOPEPATH=${HOPEPATH}" ${HOPE} -f ${INPUT}
+    WORKING_DIRECTORY ${WORKDIR}
     RESULT_VARIABLE exit_code
     OUTPUT_VARIABLE actual_out
     ERROR_VARIABLE  actual_err
-    ENVIRONMENT "HOPEPATH=${HOPEPATH}"
 )
 
 # Merge stdout and stderr (matches the original make check behaviour)

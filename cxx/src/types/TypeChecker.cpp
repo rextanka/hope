@@ -4,6 +4,9 @@
 #include <cassert>
 #include <sstream>
 
+#include "printer/ExprPrinter.hpp"
+#include "printer/TypePrinter.hpp"
+
 namespace hope {
 
 // ---------------------------------------------------------------------------
@@ -38,7 +41,8 @@ void TypeChecker::check_decl(const Decl& decl) {
 
 TyRef TypeChecker::infer_top_expr(const Expr& expr) {
     VarEnv vars;
-    return infer_expr(expr, vars);
+    TyRef result = infer_expr(expr, vars);
+    return deref(result);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,9 +157,15 @@ void TypeChecker::collect_tvars(const Type& t, std::vector<std::string>& out) {
     std::visit([&](const auto& alt) {
         using T = std::decay_t<decltype(alt)>;
         if constexpr (std::is_same_v<T, TVar>) {
-            // Add if not already present.
-            if (std::find(out.begin(), out.end(), alt.name) == out.end())
-                out.push_back(alt.name);
+            // Only treat as a type variable if NOT a known type constructor.
+            // In Hope, bare idents in types are parsed as TVar; those that
+            // are known type constructors (e.g. "num", "bool", "char") should
+            // NOT be treated as universally-quantified type parameters.
+            if (!env_.lookup_type(alt.name)) {
+                // Add if not already present.
+                if (std::find(out.begin(), out.end(), alt.name) == out.end())
+                    out.push_back(alt.name);
+            }
         } else if constexpr (std::is_same_v<T, TCons>) {
             for (const auto& a : alt.args)
                 collect_tvars(*a, out);
@@ -246,8 +256,22 @@ TyRef TypeChecker::infer_pattern(const Pattern& p, VarEnv& out_vars) {
     return std::visit([&](const auto& alt) -> TyRef {
         using T = std::decay_t<decltype(alt)>;
 
-        // PVar — bind a fresh variable
+        // PVar — bind a fresh variable, unless the name is a known nullary constructor
         if constexpr (std::is_same_v<T, PVar>) {
+            // Check if name is a known nullary constructor (e.g. nil, true, false).
+            // The parser emits PVar for bare lowercase names like nil when not
+            // followed by `(`, but the type checker needs to treat them as PCons.
+            const ConInfo* ci = env_.lookup_con(alt.name);
+            if (ci && !ci->arg) {
+                // Nullary constructor — same logic as PCons nullary case.
+                std::unordered_map<std::string, TyRef> sub;
+                for (const auto& param : ci->params)
+                    sub[param] = new_tvar();
+                std::vector<TyRef> result_args;
+                for (const auto& param : ci->params)
+                    result_args.push_back(sub.at(param));
+                return make_tycons(ci->type_name, std::move(result_args));
+            }
             TyRef tv = new_tvar();
             out_vars[alt.name] = tv;
             return tv;
@@ -499,9 +523,14 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
             TyRef ta  = infer_expr(*alt.arg,  vars);
             TyRef ret = new_tvar();
             TyRef fun_ty = make_fun_type(ta, ret);
-            if (!unify(tf, fun_ty))
-                error("type mismatch in application: function cannot accept argument type",
-                      e.loc);
+            if (!unify(tf, fun_ty)) {
+                // Build context lines: expression, function type, argument type.
+                std::vector<std::string> ctx;
+                try { ctx.push_back("  " + print_expr(e)); } catch (...) {}
+                try { ctx.push_back("  " + print_expr(*alt.func) + " : " + print_type(deref(tf))); } catch (...) {}
+                try { ctx.push_back("  " + print_expr(*alt.arg)  + " : " + print_type(deref(ta))); } catch (...) {}
+                error("argument has wrong type", e.loc, std::move(ctx));
+            }
             return deref(ret);
         }
 
@@ -544,9 +573,18 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
             TyRef tl  = infer_expr(*alt.left,  vars);
             TyRef tr  = infer_expr(*alt.right, vars);
             TyRef ret = new_tvar();
-            // top : tl -> tr -> ret
-            if (!unify(top, make_fun_type(tl, make_fun_type(tr, ret))))
-                error("type mismatch in infix expression '" + alt.op + "'", e.loc);
+            // In Hope, infix operators take a product: top : (tl # tr) -> ret
+            if (!unify(top, make_fun_type(make_prod_type(tl, tr), ret))) {
+                std::vector<std::string> ctx;
+                try { ctx.push_back("  " + print_expr(e)); } catch (...) {}
+                try {
+                    // Print "  (op) : op_type"
+                    ctx.push_back("  (" + alt.op + ") : " + print_type(deref(top)));
+                } catch (...) {}
+                try { ctx.push_back("  " + print_expr(*alt.left)  + " : " + print_type(deref(tl))); } catch (...) {}
+                try { ctx.push_back("  " + print_expr(*alt.right) + " : " + print_type(deref(tr))); } catch (...) {}
+                error("argument has wrong type", e.loc, std::move(ctx));
+            }
             return deref(ret);
         }
 
@@ -566,10 +604,68 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
         // ---- EList ----
         else if constexpr (std::is_same_v<T, EList>) {
             TyRef elem_ty = new_tvar();
-            for (const auto& ep : alt.elems) {
-                TyRef et = infer_expr(*ep, vars);
-                if (!unify(elem_ty, et))
-                    error("list expression: element types do not match", e.loc);
+            TyRef first_ty;  // type of first element (for error reporting)
+            size_t first_idx = 0;
+            for (size_t i = 0; i < alt.elems.size(); ++i) {
+                TyRef et = infer_expr(*alt.elems[i], vars);
+                if (i == 0) first_ty = et;
+                if (!unify(elem_ty, et)) {
+                    // Format error like a :: type mismatch.
+                    TyRef cons_ty; // alpha # list alpha -> list alpha
+                    try {
+                        if (const FuncDecl* fd = env_.lookup_func("::"))
+                            if (fd->type) cons_ty = instantiate(fd->params, fd->type);
+                    } catch (...) {}
+                    std::vector<std::string> ctx;
+                    try { ctx.push_back("  " + print_expr(e)); } catch (...) {}
+                    if (cons_ty)
+                        try { ctx.push_back("  (::) : " + print_type(deref(cons_ty))); } catch (...) {}
+                    else
+                        ctx.push_back("  (::) : alpha # list alpha -> list alpha");
+                    // Show first element and the rest as a list.
+                    if (i > 0 && first_ty)
+                        try { ctx.push_back("  " + print_expr(*alt.elems[0]) + " : " + print_type(deref(first_ty))); } catch (...) {}
+                    // Show the current element's type mismatching.
+                    try {
+                        // Build rest as a temporary EList for print_expr.
+                        // Check if rest elements are all char literals → print as string.
+                        bool rest_all_chars = true;
+                        for (size_t j = i; j < alt.elems.size(); ++j) {
+                            if (const auto* el = std::get_if<ELit>(&alt.elems[j]->data)) {
+                                if (!std::holds_alternative<LitChar>(el->lit)) {
+                                    rest_all_chars = false; break;
+                                }
+                            } else { rest_all_chars = false; break; }
+                        }
+                        std::string rest;
+                        if (rest_all_chars && i < alt.elems.size()) {
+                            rest = "\"";
+                            for (size_t j = i; j < alt.elems.size(); ++j) {
+                                if (const auto* el = std::get_if<ELit>(&alt.elems[j]->data)) {
+                                    if (const auto* lc = std::get_if<LitChar>(&el->lit)) {
+                                        const std::string& t = lc->text;
+                                        if (t.size() >= 2) {
+                                            std::string inner = t.substr(1, t.size() - 2);
+                                            if (inner == "\\'") rest += "'";
+                                            else if (inner == "\\\\") rest += "\\\\";
+                                            else rest += inner;
+                                        }
+                                    }
+                                }
+                            }
+                            rest += "\"";
+                        } else {
+                            rest = "[";
+                            for (size_t j = i; j < alt.elems.size(); ++j) {
+                                if (j > i) rest += ", ";
+                                rest += print_expr(*alt.elems[j]);
+                            }
+                            rest += "]";
+                        }
+                        ctx.push_back("  " + rest + " : " + print_type(make_list_type(deref(et))));
+                    } catch (...) {}
+                    error("argument has wrong type", alt.elems[i]->loc, std::move(ctx));
+                }
             }
             return make_list_type(deref(elem_ty));
         }
@@ -598,16 +694,18 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
 
             if (alt.is_left) {
                 // Left section (e op): te is left arg; result is right_arg -> result
+                // In Hope, op : te # right_arg -> result
                 TyRef right_arg = new_tvar();
                 TyRef result    = new_tvar();
-                if (!unify(top, make_fun_type(te, make_fun_type(right_arg, result))))
+                if (!unify(top, make_fun_type(make_prod_type(te, right_arg), result)))
                     error("type mismatch in left section", e.loc);
                 return make_fun_type(deref(right_arg), deref(result));
             } else {
                 // Right section (op e): te is right arg; result is left_arg -> result
+                // In Hope, op : left_arg # te -> result
                 TyRef left_arg = new_tvar();
                 TyRef result   = new_tvar();
-                if (!unify(top, make_fun_type(left_arg, make_fun_type(te, result))))
+                if (!unify(top, make_fun_type(make_prod_type(left_arg, te), result)))
                     error("type mismatch in right section", e.loc);
                 return make_fun_type(deref(left_arg), deref(result));
             }
@@ -952,10 +1050,17 @@ void TypeChecker::process_equation(const DEquation& eq, SourceLocation loc) {
     // Infer RHS.
     TyRef rhs_ty = infer_expr(*eq.rhs, vars);
 
-    // Build the equation's inferred type: p1 -> p2 -> ... -> rhs
+    // Build the equation's inferred type.
+    // For infix equations (x op y), the operator takes a product: (x # y) -> ret.
+    // For regular equations (f x y), build curried: x -> y -> ret.
     TyRef inferred = rhs_ty;
-    for (int i = static_cast<int>(pat_types.size()) - 1; i >= 0; --i)
-        inferred = make_fun_type(pat_types[i], inferred);
+    if (eq.lhs.is_infix && pat_types.size() == 2) {
+        // Infix: (arg1 # arg2) -> rhs
+        inferred = make_fun_type(make_prod_type(pat_types[0], pat_types[1]), rhs_ty);
+    } else {
+        for (int i = static_cast<int>(pat_types.size()) - 1; i >= 0; --i)
+            inferred = make_fun_type(pat_types[i], inferred);
+    }
 
     // Unify with the self-reference variable (handles recursion).
     if (!unify(self_var, inferred))
@@ -987,9 +1092,16 @@ void TypeChecker::match_declared(const std::string&  name,
 
     // Try to unify inferred with the frozen declared type.
     if (!unify(inferred, frozen_decl)) {
-        std::ostringstream oss;
-        oss << "type of '" << name << "' does not match its declaration";
-        error(oss.str(), loc);
+        std::vector<std::string> ctx;
+        try {
+            // Print the declared type (from the AST, not the inferred graph).
+            if (decl.type)
+                ctx.push_back("  declared type: " + print_ast_type(*decl.type));
+        } catch (...) {}
+        try {
+            ctx.push_back("  inferred type: " + print_type(inferred));
+        } catch (...) {}
+        error("'" + name + "': does not match declaration", loc, std::move(ctx));
     }
 }
 
@@ -999,6 +1111,11 @@ void TypeChecker::match_declared(const std::string&  name,
 
 [[noreturn]] void TypeChecker::error(const std::string& msg, SourceLocation loc) {
     throw TypeError(msg, std::move(loc));
+}
+
+[[noreturn]] void TypeChecker::error(const std::string& msg, SourceLocation loc,
+                                     std::vector<std::string> context) {
+    throw TypeError(msg, std::move(loc), std::move(context));
 }
 
 } // namespace hope
