@@ -16,6 +16,11 @@ target_include_directories(hope_tests
     PRIVATE ${CMAKE_SOURCE_DIR}/src
 )
 
+target_compile_definitions(hope_tests PRIVATE
+    HOPE_LIB_DIR="${CMAKE_SOURCE_DIR}/../lib"
+    HOPE_TEST_DIR="${CMAKE_SOURCE_DIR}/../test"
+)
+
 gtest_discover_tests(hope_tests)
 
 # ---------------------------------------------------------------------------

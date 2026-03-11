@@ -61,7 +61,8 @@ bool Lexer::is_ident_start(char c) {
 }
 
 bool Lexer::is_ident_cont(char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    // Allow apostrophe (prime) as an identifier continuation: alpha', x', words'
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '\'';
 }
 
 // Graphic characters that form operator tokens.
@@ -82,6 +83,7 @@ bool Lexer::is_operator_char(char c) {
         case '/': case ':': case '<': case '=':
         case '>': case '?': case '@': case '\\':
         case '^': case '|': case '~':
+        case '{': case '}':
             return true;
         default:
             return false;
