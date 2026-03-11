@@ -7,7 +7,7 @@
 file(GLOB_RECURSE HOPE_LIB_SOURCES CONFIGURE_DEPENDS
     lexer/*.cpp
     parser/*.cpp
-    # types/*.cpp         — added in Phase 2
+    types/*.cpp
     # compiler/*.cpp      — added in Phase 3
     # runtime/*.cpp       — added in Phase 3
     # builtins/*.cpp      — added in Phase 3
