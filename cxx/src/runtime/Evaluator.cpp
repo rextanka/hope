@@ -43,6 +43,10 @@ void Evaluator::register_builtin(const std::string& name,
     global_env_ = env_extend(global_env_, name, v);
 }
 
+void Evaluator::register_value(const std::string& name, ValRef val) {
+    global_env_ = env_extend(global_env_, name, std::move(val));
+}
+
 ValRef Evaluator::eval_top(const Expr& e) {
     return eval(e, global_env_);
 }
@@ -1695,6 +1699,35 @@ void Evaluator::init_builtins() {
             result = make_cons(make_char(*it), result);
         }
         return result;
+    });
+
+    // --- input / argv: default empty lists ---
+    // These are overridden by Session::set_input_stream / Session::set_argv
+    // before any user program runs.
+    global_env_ = env_extend(global_env_, "input", make_nil());
+    global_env_ = env_extend(global_env_, "argv",  make_nil());
+
+    // --- print / return / write_element / write_list stubs ---
+    // print : alpha -> beta — force and pretty-print to stdout, return nil
+    register_builtin("print", [this](ValRef v) -> ValRef {
+        ValRef fv = force_full(v);
+        std::cout << print_value(fv) << "\n";
+        return make_nil();
+    });
+
+    // return : alpha — a polymorphic "bottom" / terminal value; we use nil
+    global_env_ = env_extend(global_env_, "return", make_nil());
+
+    // write_element : alpha -> list alpha -> beta
+    // Prints the element then continues with write_list (via Hope definitions).
+    // As a builtin stub: print element, ignore tail, return nil.
+    register_builtin("write_element", [this](ValRef v) -> ValRef {
+        ValRef fv = force(v);
+        if (auto* pr = std::get_if<VPair>(&fv->data)) {
+            ValRef elem = force_full(pr->left);
+            std::cout << print_value(elem);
+        }
+        return make_nil();
     });
 
     // --- Built-in constructors as values ---

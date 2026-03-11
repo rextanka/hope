@@ -9,6 +9,7 @@
 #include <iostream>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "modules/ModuleLoader.hpp"
 #include "parser/OperatorTable.hpp"
@@ -35,8 +36,21 @@ public:
     void run_string(const std::string& code, const std::string& source_name,
                     std::ostream& out);
 
+    // Run an interactive REPL loop reading from `in`, writing to `out`.
+    // Handles meta-commands (:load, :type, :display, :clear, :quit/:exit).
+    // Returns when the user exits.
+    void run_interactive(std::istream& in, std::ostream& out);
+
     // Set the library directory for resolving `uses` directives.
     void set_lib_dir(const std::string& dir) { lib_dir_ = dir; }
+
+    // Set command-line arguments available as `argv` in Hope programs.
+    // Must be called before load_standard / run_file.
+    void set_argv(const std::vector<std::string>& args);
+
+    // Set the input stream used for the `input` builtin (lazy stdin list).
+    // Defaults to std::cin.  Must be called before run_file.
+    void set_input_stream(std::istream& in);
 
 private:
     std::string      lib_dir_;
@@ -54,6 +68,9 @@ private:
 
     // Are we currently loading silently (stdlib / uses module)?
     bool in_silent_load_ = false;
+
+    // Input stream for the `input` builtin (default: std::cin).
+    std::istream* input_stream_ = &std::cin;
 
     // Records for the `display;` command: each entry is a pre-formatted
     // string (one or more lines) representing a user declaration.

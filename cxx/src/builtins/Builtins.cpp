@@ -62,6 +62,114 @@ void Builtins::init(Evaluator& ev) {
                            SourceLocation{"<runtime>", 0, 0, 0});
     });
 
+    // Inverse trig (1-arg)
+    ev.register_builtin("asin", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::asin(vn->n));
+        throw RuntimeError("asin: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("acos", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::acos(vn->n));
+        throw RuntimeError("acos: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("atan", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::atan(vn->n));
+        throw RuntimeError("atan: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    // Hyperbolic (1-arg)
+    ev.register_builtin("sinh", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::sinh(vn->n));
+        throw RuntimeError("sinh: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("cosh", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::cosh(vn->n));
+        throw RuntimeError("cosh: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("tanh", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::tanh(vn->n));
+        throw RuntimeError("tanh: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("asinh", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::asinh(vn->n));
+        throw RuntimeError("asinh: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("acosh", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::acosh(vn->n));
+        throw RuntimeError("acosh: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("atanh", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::atanh(vn->n));
+        throw RuntimeError("atanh: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    // log10, erf, erfc (1-arg)
+    ev.register_builtin("log10", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::log10(vn->n));
+        throw RuntimeError("log10: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("erf", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::erf(vn->n));
+        throw RuntimeError("erf: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    ev.register_builtin("erfc", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::erfc(vn->n));
+        throw RuntimeError("erfc: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    // ceil: alias for ceiling (Standard.hop declares both)
+    ev.register_builtin("ceil", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        if (auto* vn = std::get_if<VNum>(&f->data)) return make_num(std::ceil(vn->n));
+        throw RuntimeError("ceil: expected a number", SourceLocation{"<runtime>", 0, 0, 0});
+    });
+
+    // atan2: takes a pair (y, x)
+    ev.register_builtin("atan2", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        auto* pr = std::get_if<VPair>(&f->data);
+        if (!pr) throw RuntimeError("atan2: expected a pair", SourceLocation{"<runtime>", 0, 0, 0});
+        ValRef fa = ev.force(pr->left);
+        ValRef fb = ev.force(pr->right);
+        auto* va = std::get_if<VNum>(&fa->data);
+        auto* vb = std::get_if<VNum>(&fb->data);
+        if (!va || !vb) throw RuntimeError("atan2: expected numbers", SourceLocation{"<runtime>", 0, 0, 0});
+        return make_num(std::atan2(va->n, vb->n));
+    });
+
+    // hypot: takes a pair (x, y)
+    ev.register_builtin("hypot", [&ev](ValRef v) -> ValRef {
+        ValRef f = ev.force(v);
+        auto* pr = std::get_if<VPair>(&f->data);
+        if (!pr) throw RuntimeError("hypot: expected a pair", SourceLocation{"<runtime>", 0, 0, 0});
+        ValRef fa = ev.force(pr->left);
+        ValRef fb = ev.force(pr->right);
+        auto* va = std::get_if<VNum>(&fa->data);
+        auto* vb = std::get_if<VNum>(&fb->data);
+        if (!va || !vb) throw RuntimeError("hypot: expected numbers", SourceLocation{"<runtime>", 0, 0, 0});
+        return make_num(std::hypot(va->n, vb->n));
+    });
+
     // Power operator: ** takes a pair (base, exponent)
     ev.register_builtin("**", [&ev](ValRef v) -> ValRef {
         ValRef f = ev.force(v);
