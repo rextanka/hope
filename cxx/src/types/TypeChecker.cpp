@@ -131,14 +131,13 @@ bool TypeChecker::real_unify(TyRef t1, TyRef t2,
     visited.push_back({t1, t2});
 
     // ---- TyVar on left ----
-    if (auto* tv = std::get_if<TyVar>(&t1->data)) {
-        // tv is unbound (deref would have followed binding)
+    if (std::get_if<TyVar>(&t1->data)) {
         assign(t1, t2);
         return true;
     }
 
     // ---- TyVar on right ----
-    if (auto* tv = std::get_if<TyVar>(&t2->data)) {
+    if (std::get_if<TyVar>(&t2->data)) {
         assign(t2, t1);
         return true;
     }
@@ -649,7 +648,6 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
         else if constexpr (std::is_same_v<T, EList>) {
             TyRef elem_ty = new_tvar();
             TyRef first_ty;  // type of first element (for error reporting)
-            size_t first_idx = 0;
             for (size_t i = 0; i < alt.elems.size(); ++i) {
                 TyRef et = infer_expr(*alt.elems[i], vars);
                 if (i == 0) first_ty = et;

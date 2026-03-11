@@ -1530,7 +1530,7 @@ void Evaluator::init_builtins() {
     // --- String / list functions ---
 
     // num2str: num -> list char
-    register_builtin("num2str", [this, get_num](ValRef v) -> ValRef {
+    register_builtin("num2str", [get_num](ValRef v) -> ValRef {
         double n = get_num(v);
         std::string s;
         if (n == std::floor(n) && std::isfinite(n)) {
