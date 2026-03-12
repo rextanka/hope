@@ -440,8 +440,11 @@ Decl Parser::parse_command_or_eval() {
         return Decl{DSave{std::move(name)}, loc};
     }
     if (match(TokenKind::KW_EDIT)) {
+        std::string mod;
+        if (peek().kind == TokenKind::IDENT)
+            mod = advance().text;
         expect(TokenKind::SEMICOLON, "after edit");
-        return Decl{DEdit{}, loc};
+        return Decl{DEdit{std::move(mod)}, loc};
     }
     if (match(TokenKind::KW_EXIT)) {
         expect(TokenKind::SEMICOLON, "after exit");
