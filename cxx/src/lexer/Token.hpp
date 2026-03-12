@@ -35,6 +35,7 @@ enum class TokenKind {
     // Interactive commands
     KW_SAVE,      // save
     KW_WRITE,     // write
+    KW_TO,        // to   — used in "write expr to "file""
     KW_DISPLAY,   // display
     KW_EDIT,      // edit
     KW_EXIT,      // exit

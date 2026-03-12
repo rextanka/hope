@@ -1094,7 +1094,19 @@ ExprPtr Parser::parse_prefix_expr() {
     if (peek().kind == TokenKind::KW_WRITE) {
         advance();
         ExprPtr arg = parse_expr_prec(0);
-        return make_expr(EWrite{std::move(arg)}, loc);
+        // Optional "to <string-literal>" suffix for file output.
+        std::optional<std::string> file_path;
+        if (peek().kind == TokenKind::KW_TO) {
+            advance();
+            if (peek().kind != TokenKind::STR_LIT)
+                throw ParseError("expected string literal after 'to'", peek().loc);
+            // Strip surrounding quotes and unescape the string literal value.
+            std::string raw = advance().text;
+            if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"')
+                raw = raw.substr(1, raw.size() - 2);
+            file_path = std::move(raw);
+        }
+        return make_expr(EWrite{std::move(arg), std::move(file_path)}, loc);
     }
 
     // Anything else: application chain

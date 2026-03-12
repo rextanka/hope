@@ -130,7 +130,7 @@ These are regular Hope statements entered at the prompt:
 |---------|-------------|
 | `expr;` | Evaluate *expr* and print `>> value : type`. |
 | `write expr;` | Stream the value of *expr* (a list) to stdout without the `>> … : type` wrapper.  Characters are printed directly; other elements are printed one per line.  Each element is output as soon as it is computed (lazy streaming). |
-| `write expr to "file";` | Like `write expr;` but output goes to *file*. |
+| `write expr to "file";` | Like `write expr;` but output goes to *file* (created or overwritten). |
 | `display;` | Display all definitions entered in the current session (Hope-level equivalent of `:display`). |
 | `save` *ModuleName*`;` | Write the current session definitions to *ModuleName*`.hop` in the current directory. |
 | `uses` *ModuleName*`;` | Load a library module and make its definitions available. |
@@ -202,6 +202,16 @@ hope> write (front_seq(5, gen_seq (+ 1) 1));
 [1, 2, 3, 4, 5]
 ```
 
+To save output to a file, use `to "filename"`:
+
+```
+hope> write "hello world" to "output.txt";
+hope> write (front_seq(10, primes)) to "primes.txt";
+```
+
+The file is created (or overwritten) and receives the same output that
+`write expr;` would have printed to the terminal.
+
 ### Saving and reloading a session
 
 ```
@@ -227,21 +237,26 @@ REPL prompt.  Standard modules live in `<HOPEPATH>/`.
 | Module | Key exports |
 |--------|-------------|
 | `Standard` | Loaded automatically. `bool`, `list`, `num`, `char`, arithmetic, comparison, `map`, `filter`, `foldl`, `foldr`, `append`, `length`, `reverse`, `nth`, `hd`, `tl`, `null`, `not`, … |
-| `list` | Additional list utilities: `reverse`, `length`, `||` (zip), `front`, `after`, `@` (index), `iterate`, `partition`, `span`, `front_with`, `after_with` |
-| `arith` | Extended arithmetic: `div`, `mod`, `gcd`, `lcm`, `even`, `odd`, integer powers, `fibs`, `primes` (via lazy sequences) |
-| `seq` | Lazy sequences: `seq alpha`, `gen_seq`, `front_seq`, `filter_seq`, `map_seq`, `primes` |
-| `maybe` | Option type: `maybe alpha` (`No` / `Yes x`), `safe_head`, `safe_div` |
+| `list` | Additional list utilities: `||` (zip), `front`, `after`, `@` (index), `iterate`, `partition`, `span`, `front_with`, `after_with` |
+| `lists` | Extended list operations: `member`, `many`, `repeat`, `--` (difference), `last`, `init`, `rotl`, `rotr` |
+| `arith` | Extended arithmetic: `fibs`, `primes` (via lazy sequences) |
+| `seq` | Lazy sequences: `seq alpha`, `gen_seq`, `front_seq`, `filter_seq`, `map_seq` |
+| `maybe` | Option type: `maybe alpha` (`No` / `Yes x`), `unit_maybe`, `bind_maybe`, `AND`, `OR`, `-->`, `flatten` |
 | `tree` | Binary trees: `tree alpha` (`Tip` / `Branch`), `fold_tree`, `flatten`, `show_tree` |
-| `sort` | Sorting: `sort` (merge sort), `msort`, `qsort`, `isort`, `ssort`, `uniq` |
+| `sort` | Sorting: `sort` (merge sort), `uniq` |
 | `set` | Ordered sets (abstract type): `{}` / `empty`, `&` (insert), `U` (union), `choose`, `card` |
 | `lines` | Line-oriented I/O: `lines`, `unlines` |
-| `fold` | Higher-order folds |
+| `fold` | Higher-order folds: `fold`, `unfold`, `rec` |
 | `functions` | Function combinators: `o` (compose), `id`, `const`, `curry`, `uncurry` |
 | `products` | Pair operations |
-| `sums` | Sum type utilities |
-| `range` | Numeric ranges |
-| `words` | Word splitting/joining |
+| `sums` | Sum type: `alpha OR beta` (`Left` / `Right`), `\/` (case analysis), `either` |
+| `range` | Numeric ranges: `..` notation |
+| `words` | Word splitting/joining: `words`, `unwords` |
 | `ctype` | Character classification: `isalpha`, `isdigit`, `isspace`, `toupper`, `tolower` |
+| `diag` | Diagonal enumeration of pairs: `//` (zip as pairs), `diagonal` |
+| `case` | Case combinator: `case x f` applies `f` to `x` |
+| `y` | Fixed-point combinators: `Ycurry`, `Yturing` |
+| `void` | The empty type: `data void == Nothing` |
 
 ### Abstract types
 
@@ -255,6 +270,24 @@ escape the module.
 ---
 
 ## Language features
+
+### Reserved words
+
+The following identifiers cannot be used as variable or function names:
+
+```
+abstype data dec display edit else exit if in
+infix infixr lambda let letrec private save then
+to type typevar uses where whererec write
+```
+
+Synonyms accepted by this interpreter: `\` for `lambda`, `use` for `uses`,
+`infixrl` for `infixr`.
+
+The `to` keyword is reserved for `write expr to "file"` file output.
+`nonop` (prefix operator-as-value) is also reserved.
+
+---
 
 ### Data types
 
@@ -406,11 +439,25 @@ card (1 & (2 & (3 & {})));      !  >> 3 : num
 
 ### Using the `maybe` module
 
+`maybe.hop` provides the `maybe alpha` option type and monadic combinators:
+
 ```hope
 uses maybe;
 
-safe_head [1, 2, 3];           !  >> Yes 1 : maybe num
-safe_head ([] : list num);     !  type error (annotation not supported yet)
+unit_maybe 42;
+! >> Yes 42 : maybe num
+
+bind_maybe (Yes 3) (unit_maybe o (+ 1));
+! >> Yes 4 : maybe num
+
+bind_maybe No (unit_maybe o (+ 1));
+! >> No : maybe num
+
+Yes 5 OR 0;    ! OR extracts, defaulting to second arg if No
+! >> 5 : num
+
+No OR 0;
+! >> 0 : num
 ```
 
 ### Sorting

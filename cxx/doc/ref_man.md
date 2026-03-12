@@ -35,8 +35,10 @@ The following identifiers are reserved by the language:
 ++ --- : <= == => |
 abstype data dec display else edit exit if in
 infix infixr lambda let letrec private save then
-type typevar uses where whererec write
+to type typevar uses where whererec write
 ```
+
+> `to` is reserved for the `write expr to "file"` file-output syntax.
 
 The following identifiers are also reserved for compatibility with other
 implementations:

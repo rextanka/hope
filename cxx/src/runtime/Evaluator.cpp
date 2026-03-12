@@ -7,6 +7,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -820,36 +821,77 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
         }
 
         // ----------------------------------------------------------------
-        // EWrite — write expr (Hope's lazy I/O output)
+        // EWrite — write expr [to "file"] (Hope's lazy I/O output)
+        //
+        // Semantics match Paterson's C interpreter (output.c / wr_expr):
+        //   - The expression must be a list (type-checked separately).
+        //   - Char elements are printed raw (no separator).
+        //   - Non-char elements are printed via the value printer followed by '\n'.
+        //   - Each element is output as soon as it is computed (lazy streaming).
+        //   - For file output, a temp file is written first and atomically renamed
+        //     on success; the original file is untouched if evaluation fails.
         // ----------------------------------------------------------------
         if constexpr (std::is_same_v<T, EWrite>) {
             ValRef val = eval(*d.expr, env);
             val = force(val);
-            // If it's a list of chars, print as raw characters
-            // Otherwise, print the value representation
-            auto* cons = std::get_if<VCons>(&val->data);
-            if (cons && (cons->name == "::" || cons->name == "nil")) {
-                // Walk the list and print chars
-                ValRef cur = val;
-                while (true) {
-                    cur = force(cur);
-                    auto* c = std::get_if<VCons>(&cur->data);
-                    if (!c || c->name == "nil") break;
-                    if (c->name != "::") break;
-                    ValRef arg = force(c->arg);
-                    auto* pr = std::get_if<VPair>(&arg->data);
-                    if (!pr) break;
-                    ValRef head = force(pr->left);
-                    if (auto* ch = std::get_if<VChar>(&head->data)) {
-                        std::cout << ch->c;
-                    } else {
-                        std::cout << print_value(head);
-                    }
-                    cur = pr->right;
-                }
-            } else {
-                std::cout << print_value(val);
+
+            // Determine output stream: stdout or a named file.
+            // For file output, write to a temp path and rename atomically.
+            std::string    temp_path;
+            std::ofstream  file_stream;
+            std::ostream*  out = &std::cout;
+
+            if (d.file_path) {
+                // Place the temp file next to the target so rename is atomic.
+                temp_path = *d.file_path + ".hope_tmp";
+                file_stream.open(temp_path);
+                if (!file_stream)
+                    throw RuntimeError("cannot open file for writing: " + *d.file_path, e.loc);
+                out = &file_stream;
             }
+
+            // Walk the list lazily.  Chars print raw; other values print with
+            // a trailing newline (matching Paterson's write_value behaviour).
+            bool write_error = false;
+            try {
+                auto* cons = std::get_if<VCons>(&val->data);
+                if (cons && (cons->name == "::" || cons->name == "nil")) {
+                    ValRef cur = val;
+                    while (true) {
+                        cur = force(cur);
+                        auto* c = std::get_if<VCons>(&cur->data);
+                        if (!c || c->name == "nil") break;
+                        if (c->name != "::") break;
+                        ValRef arg = force(c->arg);
+                        auto* pr = std::get_if<VPair>(&arg->data);
+                        if (!pr) break;
+                        ValRef head = force(pr->left);
+                        if (auto* ch = std::get_if<VChar>(&head->data)) {
+                            *out << ch->c;
+                        } else {
+                            *out << print_value(head) << '\n';
+                        }
+                        cur = pr->right;
+                    }
+                } else {
+                    // Non-list value: print as-is with trailing newline.
+                    *out << print_value(val) << '\n';
+                }
+            } catch (...) {
+                write_error = true;
+            }
+
+            if (d.file_path) {
+                file_stream.close();
+                if (write_error) {
+                    std::filesystem::remove(temp_path);   // clean up on error
+                } else {
+                    std::filesystem::rename(temp_path, *d.file_path); // atomic
+                }
+            }
+
+            if (write_error) throw RuntimeError("error during write", e.loc);
+
             // write returns the unit value (nil in our representation)
             return make_nil();
         }

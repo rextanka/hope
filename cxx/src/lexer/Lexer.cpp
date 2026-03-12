@@ -31,6 +31,7 @@ std::string_view token_kind_name(TokenKind kind) {
         case TokenKind::KW_PRIVATE: return "private";
         case TokenKind::KW_SAVE:    return "save";
         case TokenKind::KW_WRITE:   return "write";
+        case TokenKind::KW_TO:      return "to";
         case TokenKind::KW_DISPLAY: return "display";
         case TokenKind::KW_EDIT:    return "edit";
         case TokenKind::KW_EXIT:    return "exit";
@@ -116,6 +117,7 @@ TokenKind Lexer::keyword_kind(std::string_view text) {
     if (text == "uses")      return TokenKind::KW_USES;
     if (text == "private")   return TokenKind::KW_PRIVATE;
     if (text == "write")     return TokenKind::KW_WRITE;
+    if (text == "to")        return TokenKind::KW_TO;
     if (text == "save")      return TokenKind::KW_SAVE;
     if (text == "display")   return TokenKind::KW_DISPLAY;
     if (text == "edit")      return TokenKind::KW_EDIT;
