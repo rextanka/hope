@@ -69,6 +69,12 @@ private:
     // Are we currently loading silently (stdlib / uses module)?
     bool in_silent_load_ = false;
 
+    // Are we past the `private;` separator in the current module load?
+    bool in_private_section_ = false;
+
+    // Function names declared in the private section of the current module load.
+    std::vector<std::string> module_private_names_;
+
     // Last file loaded via :load or run_file (for :reload and edit;).
     std::string last_loaded_file_;
 

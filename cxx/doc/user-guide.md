@@ -271,14 +271,26 @@ area (rect(4, 6));
 
 ### Functors (auto-generated `map`)
 
-For every 1-parameter data or type declaration, the interpreter automatically
-generates a functor (a `map`-like function with the same name as the type).
+For every data or type declaration with one or more type parameters, the
+interpreter automatically generates a functor — a mapping function with the
+same name as the type.  For a 1-parameter type the functor takes one function
+argument; for an n-parameter type it takes n function arguments (one per type
+variable).
+
 For example, `data tree alpha == Tip ++ Branch(alpha # tree alpha # tree alpha)`
 generates:
 
 ```hope
---- tree f Tip <= Tip;
---- tree f (Branch(x, l, r)) <= Branch(f x, tree f l, tree f r);
+--- tree f_0 Tip <= Tip;
+--- tree f_0 (Branch(x, l, r)) <= Branch(f_0 x, tree f_0 l, tree f_0 r);
+```
+
+For a 2-parameter type like `data alpha OR beta == Left alpha ++ Right beta`
+(from `sums.hop`):
+
+```hope
+--- OR f_0 f_1 (Left x)  <= Left  (f_0 x);
+--- OR f_0 f_1 (Right y) <= Right (f_1 y);
 ```
 
 The standard `map` function for `list alpha` is the list functor.  User-defined
@@ -292,6 +304,10 @@ tree (+ 1) (Branch(5, Tip, Tip));
 
 maybe (+ 1) (Yes 42);
 ! >> Yes 43 : maybe num
+
+uses sums;
+OR (+ 1) not (Left 3);
+! >> Left 4 : num OR bool
 ```
 
 ### Infix operators
@@ -440,16 +456,6 @@ Additional positional arguments after all flags are collected as the Hope
 
 ## Known limitations
 
-- **`n+k` patterns**: The pattern `pat+k` (e.g. `fib(n+2)`) matches
-  arguments ≥ k and binds the remainder.  Not yet implemented.  Used in
-  Paterson's recursive Fibonacci example; the lazy-list `fibs` definition
-  works without it.
 - **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
   extension allowing lazy binding of pair patterns.  Not used by the standard
   library.
-- **Multi-parameter functors**: Only 1-parameter data/type declarations get
-  auto-generated functors.
-- **Private function hiding**: Functions declared after `private;` in a module
-  are accessible from outside the module at the evaluator level.  Abstract type
-  representation hiding (`abstype`) is enforced correctly; value-level privacy is
-  not yet enforced.

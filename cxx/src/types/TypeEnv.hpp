@@ -116,6 +116,10 @@ public:
     // Look up a function declaration.  Returns nullptr if not found.
     const FuncDecl* lookup_func(const std::string& name) const;
 
+    // Remove a function declaration (and all its aliases) from the env.
+    // Used to hide private module functions after a module load completes.
+    void remove_funcdecl(const std::string& name);
+
 private:
     // TypeDef is heap-allocated so that ConInfo* pointers into its constructor
     // vector remain stable across unordered_map rehashing.
