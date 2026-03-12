@@ -345,7 +345,7 @@ Additional positional arguments after all flags are collected as the Hope
 - **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
   extension allowing lazy binding of pair patterns.  Not used by the standard
   library.
-- **`save` / `edit` commands**: Parsed and accepted but not executed.
+- **`edit` command**: Parsed and accepted but not executed.
 - **Type annotations on expressions**: The syntax `(expr : type)` for inline
   type annotations is not supported.
 - **Multi-parameter functors**: Only 1-parameter data/type declarations get
