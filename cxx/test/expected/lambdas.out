@@ -1,0 +1,7 @@
+>> lambda x => lambda y => x + y : num -> num -> num
+>> lambda y => 3 + y : num -> num
+>> lambda y => lambda z => 0 : alpha -> beta -> num
+>> lambda y => 1 + 2 : alpha -> num
+>> lambda y => left (1 COMMA 2) : alpha -> num
+>> lambda (op) => lambda x => x op x : (alpha # alpha -> beta) -> alpha -> beta
+>> lambda x => x * x : num -> num
