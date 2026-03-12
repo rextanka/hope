@@ -294,9 +294,28 @@ std::string Lexer::lex_escape(const SourceLocation& err_loc) {
     const char c = advance();
     switch (c) {
         case 'n': case 't': case 'r': case '\\':
-        case '\'': case '"': case '0': case 'a':
-        case 'b':  case 'f': case 'v':
+        case '\'': case '"': case 'a': case 'b':
+        case 'f':  case 'v':
             return std::string(1, '\\') + c;
+        case '0': case '1': case '2': case '3':
+        case '4': case '5': case '6': case '7': {
+            // Octal escape: \d, \dd, or \ddd (up to 3 octal digits total)
+            int count = 1;
+            while (count < 3 && !at_end() && peek() >= '0' && peek() <= '7') {
+                advance();
+                ++count;
+            }
+            return std::string(1, '\\') + c; // raw text already captured via source_ substr
+        }
+        case 'x': {
+            // Hex escape: \xNN (1 or 2 hex digits)
+            if (at_end() || !std::isxdigit(static_cast<unsigned char>(peek())))
+                throw LexError("invalid hex escape sequence", err_loc);
+            advance();
+            if (!at_end() && std::isxdigit(static_cast<unsigned char>(peek())))
+                advance();
+            return "\\x";
+        }
         default:
             throw LexError(
                 std::string("unknown escape sequence '\\") + c + "'",

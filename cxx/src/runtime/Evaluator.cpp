@@ -5,6 +5,7 @@
 #include "runtime/Evaluator.hpp"
 #include "runtime/RuntimeError.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -310,8 +311,28 @@ char Evaluator::parse_char_literal(const std::string& text) {
         case '\\': return '\\';
         case '\'': return '\'';
         case '"':  return '"';
-        case '0':  return '\0';
-        default:   return inner[1];
+        case 'a':  return '\a';
+        case 'b':  return '\b';
+        case 'f':  return '\f';
+        case 'v':  return '\v';
+        case 'x': {
+            // Hex escape: \xNN
+            int val = 0;
+            for (size_t i = 2; i < inner.size(); ++i)
+                val = val * 16 + (std::isdigit(static_cast<unsigned char>(inner[i]))
+                                  ? inner[i] - '0'
+                                  : std::tolower(static_cast<unsigned char>(inner[i])) - 'a' + 10);
+            return static_cast<char>(val);
+        }
+        default:
+            if (inner[1] >= '0' && inner[1] <= '7') {
+                // Octal escape: \ddd
+                int val = 0;
+                for (size_t i = 1; i < inner.size() && inner[i] >= '0' && inner[i] <= '7'; ++i)
+                    val = val * 8 + (inner[i] - '0');
+                return static_cast<char>(val);
+            }
+            return inner[1];
     }
 }
 
@@ -335,8 +356,39 @@ ValRef Evaluator::string_to_list(const std::string& text) {
                 case '\\': chars.push_back('\\'); break;
                 case '\'': chars.push_back('\''); break;
                 case '"':  chars.push_back('"');  break;
-                case '0':  chars.push_back('\0'); break;
-                default:   chars.push_back(inner[i]); break;
+                case 'a':  chars.push_back('\a'); break;
+                case 'b':  chars.push_back('\b'); break;
+                case 'f':  chars.push_back('\f'); break;
+                case 'v':  chars.push_back('\v'); break;
+                case 'x': {
+                    // Hex escape: \xNN
+                    int val = 0;
+                    int count = 0;
+                    while (i + 1 < inner.size() && count < 2 &&
+                           std::isxdigit(static_cast<unsigned char>(inner[i + 1]))) {
+                        ++i; ++count;
+                        val = val * 16 + (std::isdigit(static_cast<unsigned char>(inner[i]))
+                                          ? inner[i] - '0'
+                                          : std::tolower(static_cast<unsigned char>(inner[i])) - 'a' + 10);
+                    }
+                    chars.push_back(static_cast<char>(val));
+                    break;
+                }
+                default:
+                    if (inner[i] >= '0' && inner[i] <= '7') {
+                        // Octal escape: \ddd (up to 3 digits)
+                        int val = inner[i] - '0';
+                        int count = 1;
+                        while (i + 1 < inner.size() && count < 3 &&
+                               inner[i + 1] >= '0' && inner[i + 1] <= '7') {
+                            ++i; ++count;
+                            val = val * 8 + (inner[i] - '0');
+                        }
+                        chars.push_back(static_cast<char>(val));
+                    } else {
+                        chars.push_back(inner[i]);
+                    }
+                    break;
             }
         } else {
             chars.push_back(inner[i]);
@@ -1492,17 +1544,45 @@ void Evaluator::init_builtins() {
         return make_num(std::abs(get_num(v)));
     });
 
-    register_builtin("sqrt", [get_num](ValRef v) -> ValRef {
-        return make_num(std::sqrt(get_num(v)));
+    register_builtin("sqrt",  [get_num](ValRef v) { return make_num(std::sqrt(get_num(v))); });
+    register_builtin("exp",   [get_num](ValRef v) { return make_num(std::exp(get_num(v))); });
+    register_builtin("log",   [get_num](ValRef v) { return make_num(std::log(get_num(v))); });
+    register_builtin("log10", [get_num](ValRef v) { return make_num(std::log10(get_num(v))); });
+
+    register_builtin("sin",   [get_num](ValRef v) { return make_num(std::sin(get_num(v))); });
+    register_builtin("cos",   [get_num](ValRef v) { return make_num(std::cos(get_num(v))); });
+    register_builtin("tan",   [get_num](ValRef v) { return make_num(std::tan(get_num(v))); });
+    register_builtin("asin",  [get_num](ValRef v) { return make_num(std::asin(get_num(v))); });
+    register_builtin("acos",  [get_num](ValRef v) { return make_num(std::acos(get_num(v))); });
+    register_builtin("atan",  [get_num](ValRef v) { return make_num(std::atan(get_num(v))); });
+
+    register_builtin("sinh",  [get_num](ValRef v) { return make_num(std::sinh(get_num(v))); });
+    register_builtin("cosh",  [get_num](ValRef v) { return make_num(std::cosh(get_num(v))); });
+    register_builtin("tanh",  [get_num](ValRef v) { return make_num(std::tanh(get_num(v))); });
+    register_builtin("asinh", [get_num](ValRef v) { return make_num(std::asinh(get_num(v))); });
+    register_builtin("acosh", [get_num](ValRef v) { return make_num(std::acosh(get_num(v))); });
+    register_builtin("atanh", [get_num](ValRef v) { return make_num(std::atanh(get_num(v))); });
+
+    register_builtin("erf",   [get_num](ValRef v) { return make_num(std::erf(get_num(v))); });
+    register_builtin("erfc",  [get_num](ValRef v) { return make_num(std::erfc(get_num(v))); });
+
+    // Binary math: atan2, hypot, pow take a pair
+    register_builtin("atan2", [get_num, get_pair](ValRef v) -> ValRef {
+        auto [a, b] = get_pair(v);
+        return make_num(std::atan2(get_num(a), get_num(b)));
+    });
+    register_builtin("hypot", [get_num, get_pair](ValRef v) -> ValRef {
+        auto [a, b] = get_pair(v);
+        return make_num(std::hypot(get_num(a), get_num(b)));
+    });
+    register_builtin("pow",   [get_num, get_pair](ValRef v) -> ValRef {
+        auto [a, b] = get_pair(v);
+        return make_num(std::pow(get_num(a), get_num(b)));
     });
 
-    register_builtin("floor", [get_num](ValRef v) -> ValRef {
-        return make_num(std::floor(get_num(v)));
-    });
-
-    register_builtin("ceiling", [get_num](ValRef v) -> ValRef {
-        return make_num(std::ceil(get_num(v)));
-    });
+    register_builtin("floor",   [get_num](ValRef v) { return make_num(std::floor(get_num(v))); });
+    register_builtin("ceil",    [get_num](ValRef v) { return make_num(std::ceil(get_num(v))); });
+    register_builtin("ceiling", [get_num](ValRef v) { return make_num(std::ceil(get_num(v))); });
 
     register_builtin("round", [get_num](ValRef v) -> ValRef {
         return make_num(std::round(get_num(v)));

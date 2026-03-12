@@ -71,17 +71,36 @@ hope
 
 ## REPL commands
 
-The REPL accepts Hope expressions and declarations, plus the special commands
-below.  All commands begin with `:`.
+The REPL accepts Hope expressions and declarations, plus two classes of
+commands: **meta-commands** (prefixed with `:`) and **Hope-level commands**
+(terminated with `;` like any other statement).
+
+### Meta-commands
 
 | Command | What it does |
 |---------|-------------|
 | `:load <file.hop>` | Load and execute a `.hop` file into the current session.  All declarations in the file become available immediately. |
 | `:reload` | Re-run the most recently loaded file (useful after editing). |
-| `:type <expr>` | Print the inferred type of an expression without evaluating it. |
-| `:display` | List all declarations in the current session. |
-| `:clear` | Reset the session (remove all user declarations; standard library remains loaded). |
-| `:quit` / `:exit` | Exit the interpreter. |
+| `:type <expr>` | Evaluate *expr* and display its value together with its inferred type. |
+| `:display` | List all user declarations entered in the current session. |
+| `:clear` | Clear session history (removes display records and reload state; standard library remains; definitions stay in scope). |
+| `:quit` / `:exit` / `:q` | Exit the interpreter. |
+| `:help` / `:?` | Print a summary of available meta-commands. |
+
+### Hope-level commands
+
+These are regular Hope statements entered at the prompt:
+
+| Command | What it does |
+|---------|-------------|
+| `expr;` | Evaluate *expr* and print `>> value : type`. |
+| `write expr;` | Stream the value of *expr* (a list) to stdout without the `>> … : type` wrapper.  Characters are printed directly; other elements are printed one per line.  Each element is output as soon as it is computed (lazy streaming). |
+| `write expr to "file";` | Like `write expr;` but output goes to *file*. |
+| `display;` | Display all definitions entered in the current session (Hope-level equivalent of `:display`). |
+| `save` *ModuleName*`;` | Write the current session definitions to *ModuleName*`.hop` in the current directory. |
+| `uses` *ModuleName*`;` | Load a library module and make its definitions available. |
+| `exit;` | Exit the interpreter (equivalent to `:quit`). |
+| `edit;` | *(Paterson original only — not implemented in C++20 interpreter.)* Invoke an editor on the current session definitions. |
 
 ### Evaluating expressions
 
@@ -119,6 +138,16 @@ hope> factorial 10;
 
 ### Inspecting types
 
+`:type` evaluates the expression and prints the result with its type:
+
+```
+hope> :type 1 + 1;
+>> 2 : num
+```
+
+For a function value, the type is printed without a `>> ` prefix if the
+value has no printable form:
+
 ```
 hope> :type map;
 map : (alpha -> beta) -> list alpha -> list beta
@@ -126,15 +155,31 @@ map : (alpha -> beta) -> list alpha -> list beta
 
 ### Lazy output with `write`
 
-The `write` command streams characters to stdout without buffering the entire
-result first.  This is how infinite lists are printed one element at a time:
+`write expr;` streams characters to stdout without buffering the entire
+result first, and without the `>> value : type` wrapper.  Use it for lazy
+or infinite output:
 
 ```
-hope> write (hd [1,2,3]);
-1
+hope> write "hello\n";
+hello
 hope> uses seq;
 hope> write (front_seq(5, gen_seq (+ 1) 1));
 [1, 2, 3, 4, 5]
+```
+
+### Saving and reloading a session
+
+```
+hope> dec sq : num -> num;
+hope> --- sq n <= n * n;
+hope> save mysession;
+Saved to mysession.hop.
+hope> :quit
+
+$ hope
+hope> uses mysession;
+hope> sq 7;
+>> 49 : num
 ```
 
 ---
@@ -345,7 +390,7 @@ Additional positional arguments after all flags are collected as the Hope
 - **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
   extension allowing lazy binding of pair patterns.  Not used by the standard
   library.
-- **`save` / `edit` commands**: Parsed and accepted but not executed.
+- **`edit` command**: Parsed and accepted but not executed.
 - **Type annotations on expressions**: The syntax `(expr : type)` for inline
   type annotations is not supported.
 - **Multi-parameter functors**: Only 1-parameter data/type declarations get
