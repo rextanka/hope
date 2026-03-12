@@ -414,6 +414,22 @@ void Session::process_decl(Decl d, std::ostream& out) {
         return;
     }
 
+    // Handle DSave: write display_records_ to module_name.hop.
+    if (auto* save_alt = std::get_if<DSave>(&d.data)) {
+        std::string filename = save_alt->module_name + ".hop";
+        std::ofstream f(filename);
+        if (!f) {
+            if (!in_silent_load_)
+                out << "Error: cannot write to " << filename << "\n";
+            return;
+        }
+        for (const auto& rec : display_records_)
+            f << rec << "\n";
+        if (!in_silent_load_)
+            out << "Saved to " << filename << ".\n";
+        return;
+    }
+
     // Handle DDisplay: print all recorded user declarations.
     if (std::holds_alternative<DDisplay>(d.data)) {
         if (!in_silent_load_) {

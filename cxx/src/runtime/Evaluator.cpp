@@ -5,6 +5,7 @@
 #include "runtime/Evaluator.hpp"
 #include "runtime/RuntimeError.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -310,8 +311,28 @@ char Evaluator::parse_char_literal(const std::string& text) {
         case '\\': return '\\';
         case '\'': return '\'';
         case '"':  return '"';
-        case '0':  return '\0';
-        default:   return inner[1];
+        case 'a':  return '\a';
+        case 'b':  return '\b';
+        case 'f':  return '\f';
+        case 'v':  return '\v';
+        case 'x': {
+            // Hex escape: \xNN
+            int val = 0;
+            for (size_t i = 2; i < inner.size(); ++i)
+                val = val * 16 + (std::isdigit(static_cast<unsigned char>(inner[i]))
+                                  ? inner[i] - '0'
+                                  : std::tolower(static_cast<unsigned char>(inner[i])) - 'a' + 10);
+            return static_cast<char>(val);
+        }
+        default:
+            if (inner[1] >= '0' && inner[1] <= '7') {
+                // Octal escape: \ddd
+                int val = 0;
+                for (size_t i = 1; i < inner.size() && inner[i] >= '0' && inner[i] <= '7'; ++i)
+                    val = val * 8 + (inner[i] - '0');
+                return static_cast<char>(val);
+            }
+            return inner[1];
     }
 }
 
@@ -335,8 +356,39 @@ ValRef Evaluator::string_to_list(const std::string& text) {
                 case '\\': chars.push_back('\\'); break;
                 case '\'': chars.push_back('\''); break;
                 case '"':  chars.push_back('"');  break;
-                case '0':  chars.push_back('\0'); break;
-                default:   chars.push_back(inner[i]); break;
+                case 'a':  chars.push_back('\a'); break;
+                case 'b':  chars.push_back('\b'); break;
+                case 'f':  chars.push_back('\f'); break;
+                case 'v':  chars.push_back('\v'); break;
+                case 'x': {
+                    // Hex escape: \xNN
+                    int val = 0;
+                    int count = 0;
+                    while (i + 1 < inner.size() && count < 2 &&
+                           std::isxdigit(static_cast<unsigned char>(inner[i + 1]))) {
+                        ++i; ++count;
+                        val = val * 16 + (std::isdigit(static_cast<unsigned char>(inner[i]))
+                                          ? inner[i] - '0'
+                                          : std::tolower(static_cast<unsigned char>(inner[i])) - 'a' + 10);
+                    }
+                    chars.push_back(static_cast<char>(val));
+                    break;
+                }
+                default:
+                    if (inner[i] >= '0' && inner[i] <= '7') {
+                        // Octal escape: \ddd (up to 3 digits)
+                        int val = inner[i] - '0';
+                        int count = 1;
+                        while (i + 1 < inner.size() && count < 3 &&
+                               inner[i + 1] >= '0' && inner[i + 1] <= '7') {
+                            ++i; ++count;
+                            val = val * 8 + (inner[i] - '0');
+                        }
+                        chars.push_back(static_cast<char>(val));
+                    } else {
+                        chars.push_back(inner[i]);
+                    }
+                    break;
             }
         } else {
             chars.push_back(inner[i]);
