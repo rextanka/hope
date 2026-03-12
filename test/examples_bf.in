@@ -1,0 +1,22 @@
+! Breadth-first tree traversal -- Ross Paterson's Hope examples
+! Uses rose trees (recursive type synonym) and the . (pipe) operator.
+
+uses lists, functions, products;
+
+type rose_tree alpha == alpha # list(rose_tree alpha);
+
+dec bf_list : rose_tree alpha -> list alpha;
+--- bf_list t <= [t].
+        iterate (concat o map snd).
+        front_with (/= []).
+        concat.
+        map fst;
+
+bf_list (1, [(2, [(5, []),
+                  (6, [(10, [])])
+                 ]),
+             (3, [(7, [])]),
+             (4, [(8, [(11, [])]),
+                  (9, [])
+                 ])
+            ]);
