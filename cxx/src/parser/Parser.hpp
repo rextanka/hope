@@ -85,9 +85,9 @@ private:
     Decl  parse_command_or_eval();
 
     // --- Type parsers ---
-    TypePtr parse_type();
-    TypePtr parse_type_term();   // non-arrow, non-product types
-    TypePtr parse_type_atom();   // parenthesised, identifier, or list type
+    TypePtr parse_type();                 // top-level: calls parse_type_prec(0)
+    TypePtr parse_type_prec(int min_bp);  // Pratt loop for infix type operators
+    TypePtr parse_type_atom();            // parenthesised, identifier, or list type
 
     // Parse a type constructor application LHS: name(params) or name
     std::pair<std::string, std::vector<std::string>> parse_typecon_lhs();

@@ -1,0 +1,3 @@
+uses words;
+words "hello world foo bar";
+unwords ["hello", "world", "foo"];

@@ -531,26 +531,40 @@ Parser::parse_typecon_lhs() {
 
 // type ::= term ('->' type)?   right-associative, prec 2
 TypePtr Parser::parse_type() {
-    SourceLocation loc = peek().loc;
-    TypePtr left = parse_type_term();
-
-    if (check_op("->")) {
-        advance();
-        TypePtr right = parse_type();  // right-recursive for right-associativity
-        return make_type(TFun{std::move(left), std::move(right)}, loc);
-    }
-    return left;
+    return parse_type_prec(0);
 }
 
-// term ::= atom ('#' term)?   right-associative, prec 4
-TypePtr Parser::parse_type_term() {
-    SourceLocation loc = peek().loc;
+// Pratt-style type parser.  Handles all infix type operators registered in
+// ops_ (including built-ins ->, #/X and user-defined ones like OR).
+TypePtr Parser::parse_type_prec(int min_bp) {
     TypePtr left = parse_type_atom();
 
-    if (check_op("#") || check_ident("X")) {
-        advance();
-        TypePtr right = parse_type_term(); // right-recursive
-        return make_type(TProd{std::move(left), std::move(right)}, loc);
+    while (true) {
+        const Token& t = peek();
+        std::optional<OpInfo> op_info;
+        if (t.kind == TokenKind::OPERATOR || t.kind == TokenKind::IDENT)
+            op_info = ops_.lookup(t.text);
+        if (!op_info) break;
+
+        auto [token_bp, right_bp] = binding_power(*op_info);
+        if (token_bp <= min_bp) break;
+
+        SourceLocation op_loc = t.loc;
+        std::string op_text = advance().text;
+
+        TypePtr right = parse_type_prec(right_bp);
+
+        if (op_text == "->") {
+            left = make_type(TFun{std::move(left), std::move(right)}, op_loc);
+        } else if (op_text == "#" || op_text == "X") {
+            left = make_type(TProd{std::move(left), std::move(right)}, op_loc);
+        } else {
+            // User-defined infix type constructor (e.g. OR at prec 3).
+            std::vector<TypePtr> args;
+            args.push_back(std::move(left));
+            args.push_back(std::move(right));
+            left = make_type(TCons{op_text, std::move(args)}, op_loc);
+        }
     }
     return left;
 }
@@ -583,9 +597,11 @@ TypePtr Parser::parse_type_atom() {
     if (t.kind == TokenKind::IDENT) {
         std::string name = advance().text;
 
-        // Collect type arguments (atoms only — no arrow/product without parens)
+        // Collect type arguments (atoms only — no arrow/product without parens).
+        // Stop if the next IDENT is a declared infix operator (e.g. OR) — those
+        // are infix type constructors handled by the Pratt loop in parse_type_prec.
         std::vector<TypePtr> args;
-        while (peek().kind == TokenKind::IDENT   ||
+        while ((peek().kind == TokenKind::IDENT && !ops_.lookup(peek().text)) ||
                peek().kind == TokenKind::LPAREN  ||
                peek().kind == TokenKind::LBRACKET) {
             args.push_back(parse_type_atom());
@@ -1100,7 +1116,12 @@ ExprPtr Parser::parse_application() {
             t.kind == TokenKind::CHAR_LIT   ||
             t.kind == TokenKind::STR_LIT    ||
             t.kind == TokenKind::LPAREN     ||
-            t.kind == TokenKind::LBRACKET;
+            t.kind == TokenKind::LBRACKET   ||
+            // Non-infix, non-delimiter OPERATOR tokens can be atoms (e.g. `{}`).
+            (t.kind == TokenKind::OPERATOR && !ops_.lookup(t.text) &&
+             t.text != "|"  && t.text != "=>" && t.text != "<=" &&
+             t.text != "==" && t.text != "++" && t.text != "--" &&
+             t.text != "#");
 
         if (!is_atom_start) break;
 
@@ -1124,6 +1145,23 @@ ExprPtr Parser::parse_atom() {
 
     if (t.kind == TokenKind::IDENT) {
         return make_expr(EVar{advance().text}, loc);
+    }
+
+    // Operator symbols used as nullary value expressions (not declared infix,
+    // not reserved as grammar delimiters like `|`, `=>`, `<=`, `==`).
+    // In Hope, graphic-character sequences such as `{}` can be declared as
+    // functions (e.g. `dec {} : set alpha`) and used in expression position.
+    // We allow them here when they are NOT grammar delimiters.
+    if (t.kind == TokenKind::OPERATOR && !ops_.lookup(t.text)) {
+        // Never consume tokens that serve as grammar delimiters.
+        const std::string& tx = t.text;
+        bool is_delimiter =
+            tx == "|"  || tx == "=>" || tx == "<=" ||
+            tx == "==" || tx == "++" || tx == "--" ||
+            tx == "#";
+        if (!is_delimiter) {
+            return make_expr(EVar{advance().text}, loc);
+        }
     }
 
     if (t.kind == TokenKind::INT_LIT) {

@@ -1,0 +1,2 @@
+uses diag, lists;
+front(6, [1,2,3] // [10,20,30]);

@@ -23,6 +23,19 @@ set(INTEGRATION_TESTS
     maybe
     seq
     arith
+    set
+    sort
+    tree
+    list
+    functions
+    sums
+    range
+    ctype
+    lines
+    words
+    lists
+    products
+    diag
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)

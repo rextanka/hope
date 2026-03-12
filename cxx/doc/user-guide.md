@@ -1,8 +1,7 @@
 # Hope Interpreter — User Guide
 
 This guide covers building the C++20 Hope interpreter, setting it up, and
-using it interactively and in batch mode.  It is updated alongside each
-implementation phase.
+using it interactively and in batch mode.
 
 ---
 
@@ -145,22 +144,104 @@ hope> write (front_seq(5, gen_seq (+ 1) 1));
 Modules are loaded with `uses <ModuleName>;` at the top of a file or at the
 REPL prompt.  Standard modules live in `<HOPEPATH>/`.
 
-| Module | Key bindings |
+| Module | Key exports |
 |--------|-------------|
 | `Standard` | Loaded automatically. `bool`, `list`, `num`, `char`, arithmetic, comparison, `map`, `filter`, `foldl`, `foldr`, `append`, `length`, `reverse`, `nth`, `hd`, `tl`, `null`, `not`, … |
-| `list` | Additional list utilities |
-| `arith` | Extended arithmetic: `div`, `mod`, `gcd`, `lcm`, `even`, `odd`, integer powers |
+| `list` | Additional list utilities: `reverse`, `length`, `||` (zip), `front`, `after`, `@` (index), `iterate`, `partition`, `span`, `front_with`, `after_with` |
+| `arith` | Extended arithmetic: `div`, `mod`, `gcd`, `lcm`, `even`, `odd`, integer powers, `fibs`, `primes` (via lazy sequences) |
 | `seq` | Lazy sequences: `seq alpha`, `gen_seq`, `front_seq`, `filter_seq`, `map_seq`, `primes` |
 | `maybe` | Option type: `maybe alpha` (`No` / `Yes x`), `safe_head`, `safe_div` |
-| `tree` | Binary search trees: `tree alpha`, `insert`, `member`, `flatten` |
-| `sort` | Sorting: `sort`, `msort`, `qsort` |
-| `set` | Sets as sorted lists: `union`, `inter`, `diff` |
+| `tree` | Binary trees: `tree alpha` (`Tip` / `Branch`), `fold_tree`, `flatten`, `show_tree` |
+| `sort` | Sorting: `sort` (merge sort), `msort`, `qsort`, `isort`, `ssort`, `uniq` |
+| `set` | Ordered sets (abstract type): `{}` / `empty`, `&` (insert), `U` (union), `choose`, `card` |
 | `lines` | Line-oriented I/O: `lines`, `unlines` |
 | `fold` | Higher-order folds |
 | `functions` | Function combinators: `o` (compose), `id`, `const`, `curry`, `uncurry` |
 | `products` | Pair operations |
 | `sums` | Sum type utilities |
 | `range` | Numeric ranges |
+| `words` | Word splitting/joining |
+| `ctype` | Character classification: `isalpha`, `isdigit`, `isspace`, `toupper`, `tolower` |
+
+### Abstract types
+
+Some modules declare abstract types (using `abstype`) whose internal
+representation is hidden.  For example, `set.hop` declares `abstype set pos`,
+meaning `set alpha` is opaque — callers can only use the exported interface
+(`{}`, `&`, `U`, `choose`, `card`), not the underlying `list alpha`
+representation.  This opacity is enforced: the representation type does not
+escape the module.
+
+---
+
+## Language features
+
+### Data types
+
+```hope
+data shape == circle(num) ++ rect(num # num);
+
+dec area : shape -> num;
+--- area (circle r)   <= 3.14159 * r * r;
+--- area (rect(w, h)) <= w * h;
+
+area (circle 5);
+area (rect(4, 6));
+```
+
+### Functors (auto-generated `map`)
+
+For every 1-parameter data or type declaration, the interpreter automatically
+generates a functor (a `map`-like function with the same name as the type).
+For example, `data tree alpha == Tip ++ Branch(alpha # tree alpha # tree alpha)`
+generates:
+
+```hope
+--- tree f Tip <= Tip;
+--- tree f (Branch(x, l, r)) <= Branch(f x, tree f l, tree f r);
+```
+
+The standard `map` function for `list alpha` is the list functor.  User-defined
+types get the same treatment for free:
+
+```hope
+data maybe alpha == No ++ Yes alpha;
+
+tree (+ 1) (Branch(5, Tip, Tip));
+! >> Branch(6, Tip, Tip) : tree num
+
+maybe (+ 1) (Yes 42);
+! >> Yes 43 : maybe num
+```
+
+### Infix operators
+
+Operators are declared with `infix` or `infixr`:
+
+```hope
+infixr <> : 5;
+dec <> : list alpha # list alpha -> list alpha;
+--- [] <> ys <= ys;
+--- (x::xs) <> ys <= x :: (xs <> ys);
+```
+
+Operator symbols can be used as values by wrapping them in parentheses:
+`(<>)` is the append function as a value.
+
+### Lazy evaluation
+
+The interpreter uses call-by-need evaluation.  Infinite data structures are
+supported and are only computed as far as needed:
+
+```hope
+uses seq;
+front_seq(10, primes);
+! >> [2, 3, 5, 7, 11, 13, 17, 19, 23, 29] : list num
+
+uses list;
+front(5, iterate (* 2) 1);
+! >> [1, 2, 4, 8, 16] : list num
+```
 
 ---
 
@@ -200,13 +281,34 @@ area (circle 5);
 area (rect(4, 6));
 ```
 
+### Sets (abstract type)
+
+```hope
+uses set;
+
+card (1 & (2 & (3 & {})));      !  >> 3 : num
+(1 & (2 & {})) U (2 & (3 & {}));  !  >> [1, 2, 3] : set num
+```
+
 ### Using the `maybe` module
 
 ```hope
 uses maybe;
 
-safe_head [1, 2, 3];   !  >> Yes 1 : maybe num
-safe_head ([] : list num);  !  >> No : maybe num
+safe_head [1, 2, 3];           !  >> Yes 1 : maybe num
+safe_head ([] : list num);     !  type error (annotation not supported yet)
+```
+
+### Sorting
+
+```hope
+uses sort;
+
+sort [3, 1, 4, 1, 5, 9, 2, 6];
+! >> [1, 1, 2, 3, 4, 5, 6, 9] : list num
+
+uniq (sort [3, 1, 4, 1, 5, 9, 2, 6]);
+! >> [1, 2, 3, 4, 5, 6, 9] : list num
 ```
 
 ---
@@ -235,3 +337,22 @@ hope>
 
 Additional positional arguments after all flags are collected as the Hope
 `argv` variable (a `list (list char)` of command-line strings).
+
+---
+
+## Known limitations
+
+- **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
+  extension allowing lazy binding of pair patterns.  Not used by the standard
+  library.
+- **`save` / `edit` commands**: Parsed and accepted but not executed.
+- **Type annotations on expressions**: The syntax `(expr : type)` for inline
+  type annotations is not supported.
+- **Multi-parameter functors**: Only 1-parameter data/type declarations get
+  auto-generated functors.
+- **Private function hiding**: Functions declared after `private;` in a module
+  are accessible from outside the module at the evaluator level.  Abstract type
+  representation hiding (`abstype`) is enforced correctly; value-level privacy is
+  not yet enforced.
+- **Infix type printing**: User-defined infix type constructors (e.g. `alpha OR beta`)
+  print in prefix form (`OR alpha beta`) in type error messages and `:type` output.

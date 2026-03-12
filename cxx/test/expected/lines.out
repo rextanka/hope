@@ -1,0 +1,3 @@
+>> ["hello", "world"] : list (list char)
+>> ["foo", "bar"] : list (list char)
+>> "a\nb\nc\n" : list char
