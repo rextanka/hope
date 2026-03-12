@@ -22,6 +22,7 @@ set(INTEGRATION_TESTS
     type_errs
     maybe
     seq
+    arith
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)
