@@ -525,5 +525,49 @@ TEST(SessionInteractive, MultiLineSemicolonInString) {
         << "semicolon inside string literal flushed accumulator early:\n" << out;
 }
 
+// ---------------------------------------------------------------------------
+// Type annotations on expressions: (expr : type)
+// ---------------------------------------------------------------------------
+
+TEST(SessionRunString, TypeAnnotationBasic) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    ls.s.run_string("(42 : num);", "<test>", out);
+    EXPECT_NE(out.str().find("42"), std::string::npos) << out.str();
+    EXPECT_NE(out.str().find("num"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, TypeAnnotationEmptyList) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    ls.s.run_string("([] : list num);", "<test>", out);
+    EXPECT_NE(out.str().find("[]"), std::string::npos) << out.str();
+    EXPECT_NE(out.str().find("list num"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, TypeAnnotationInfixExpr) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    ls.s.run_string("(1 + 1 : num);", "<test>", out);
+    EXPECT_NE(out.str().find("2"), std::string::npos) << out.str();
+    EXPECT_NE(out.str().find("num"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, TypeAnnotationMismatch) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    // (42 : bool) must produce a type error.
+    ls.s.run_string("(42 : bool);", "<test>", out);
+    EXPECT_NE(out.str().find("type error"), std::string::npos) << out.str();
+}
+
 } // namespace
 } // namespace hope

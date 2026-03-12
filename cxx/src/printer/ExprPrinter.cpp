@@ -3,6 +3,8 @@
 #include "printer/ExprPrinter.hpp"
 
 #include <sstream>
+
+#include "printer/TypePrinter.hpp"
 #include <string>
 #include <unordered_set>
 
@@ -392,6 +394,10 @@ std::string pe(const Expr& e, const ExprSubst& subst, int min_prec, bool need_pa
 
         else if constexpr (std::is_same_v<T, EWrite>) {
             result = "write " + pe(*alt.expr, subst, 0, false);
+        }
+
+        else if constexpr (std::is_same_v<T, EAnnotate>) {
+            result = pe(*alt.expr, subst, 0, false) + " : " + print_ast_type(*alt.type);
         }
 
         else {

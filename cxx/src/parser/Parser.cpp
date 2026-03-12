@@ -1124,7 +1124,7 @@ ExprPtr Parser::parse_application() {
             (t.kind == TokenKind::OPERATOR && !ops_.lookup(t.text) &&
              t.text != "|"  && t.text != "=>" && t.text != "<=" &&
              t.text != "==" && t.text != "++" && t.text != "--" &&
-             t.text != "#");
+             t.text != "#"  && t.text != ":");
 
         if (!is_atom_start) break;
 
@@ -1161,7 +1161,7 @@ ExprPtr Parser::parse_atom() {
         bool is_delimiter =
             tx == "|"  || tx == "=>" || tx == "<=" ||
             tx == "==" || tx == "++" || tx == "--" ||
-            tx == "#";
+            tx == "#"  || tx == ":";
         if (!is_delimiter) {
             return make_expr(EVar{advance().text}, loc);
         }
@@ -1281,6 +1281,14 @@ ExprPtr Parser::parse_paren_expr() {
         return first;
     }
 
+    // (expr : type) — type annotation
+    if (peek().kind == TokenKind::OPERATOR && peek().text == ":") {
+        advance(); // consume ':'
+        TypePtr ty = parse_type();
+        expect(TokenKind::RPAREN, "after type annotation");
+        return make_expr(EAnnotate{std::move(first), std::move(ty)}, loc);
+    }
+
     // (expr, expr, ...) — tuple
     if (peek().kind == TokenKind::COMMA) {
         std::vector<ExprPtr> elems;
@@ -1330,6 +1338,14 @@ ExprPtr Parser::parse_paren_expr() {
             SourceLocation wloc = advance().loc;
             auto binds = parse_local_binds();
             first = make_expr(EWhereRec{std::move(first), std::move(binds)}, wloc);
+        }
+
+        // Could be an annotation: (expr op right : type)
+        if (peek().kind == TokenKind::OPERATOR && peek().text == ":") {
+            advance();
+            TypePtr ty = parse_type();
+            expect(TokenKind::RPAREN, "after type annotation");
+            return make_expr(EAnnotate{std::move(first), std::move(ty)}, loc);
         }
 
         // Could still be a tuple: (1 + 2, 3)

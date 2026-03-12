@@ -308,6 +308,24 @@ dec <> : list alpha # list alpha -> list alpha;
 Operator symbols can be used as values by wrapping them in parentheses:
 `(<>)` is the append function as a value.
 
+### Type annotations
+
+An expression can be given an explicit type with `(expr : type)`.  The type
+is checked against the inferred type; a mismatch is a type error.  The most
+common use case is disambiguating the empty list, whose element type cannot
+be inferred from context alone:
+
+```hope
+hd ([] : list num);   ! forces [] to have type list num
+```
+
+Annotations work with any expression, including infix expressions:
+
+```hope
+(1 + 1 : num);        ! >> 2 : num
+(42 : bool);          ! type error: num does not match bool
+```
+
 ### Lazy evaluation
 
 The interpreter uses call-by-need evaluation.  Infinite data structures are
@@ -425,8 +443,6 @@ Additional positional arguments after all flags are collected as the Hope
 - **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
   extension allowing lazy binding of pair patterns.  Not used by the standard
   library.
-- **Type annotations on expressions**: The syntax `(expr : type)` for inline
-  type annotations is not supported.
 - **Multi-parameter functors**: Only 1-parameter data/type declarations get
   auto-generated functors.
 - **Private function hiding**: Functions declared after `private;` in a module

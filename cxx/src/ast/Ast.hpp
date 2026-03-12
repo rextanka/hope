@@ -111,15 +111,16 @@ struct ELetRec    { std::vector<LocalBind> binds; ExprPtr body; };
 struct EWhere     { ExprPtr body; std::vector<LocalBind> binds; };
 struct EWhereRec  { ExprPtr body; std::vector<LocalBind> binds; };
 
-struct EIf    { ExprPtr cond; ExprPtr then_; ExprPtr else_; };
-struct EWrite { ExprPtr expr; };  // write expr (lazy I/O command)
+struct EIf       { ExprPtr cond; ExprPtr then_; ExprPtr else_; };
+struct EWrite    { ExprPtr expr; };              // write expr (lazy I/O command)
+struct EAnnotate { ExprPtr expr; TypePtr type; }; // (expr : type) — type annotation
 
 struct Expr {
     using Data = std::variant<
         EVar, ELit, EApply, EInfix, ETuple, EList,
         ESection, EOpRef, ELambda,
         ELet, ELetRec, EWhere, EWhereRec,
-        EIf, EWrite>;
+        EIf, EWrite, EAnnotate>;
     Data           data;
     SourceLocation loc;
 

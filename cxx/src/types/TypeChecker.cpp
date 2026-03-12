@@ -847,10 +847,24 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
         }
 
         // ---- EWrite ----
-        else { // EWrite
-            static_assert(std::is_same_v<T, EWrite>);
+        else if constexpr (std::is_same_v<T, EWrite>) {
             // write expr: just check the inner expression; type is not constrained.
             return infer_expr(*alt.expr, vars);
+        }
+
+        // ---- EAnnotate ----
+        else {
+            static_assert(std::is_same_v<T, EAnnotate>);
+            // (expr : type) — infer expr, convert the declared type (with fresh
+            // variables for any type parameters), then unify the two.
+            TyRef inferred = infer_expr(*alt.expr, vars);
+            // Convert the AST type using an empty substitution so that each
+            // named type variable in the annotation maps to a fresh unification var.
+            std::unordered_map<std::string, TyRef> sub;
+            TyRef declared = ast_to_tyref(*alt.type, sub);
+            if (!unify(inferred, declared))
+                error("expression type does not match annotation", e.loc);
+            return declared;
         }
     }, e.data);
 }
