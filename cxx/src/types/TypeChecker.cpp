@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <functional>
 #include <sstream>
 
 #include "printer/ExprPrinter.hpp"
