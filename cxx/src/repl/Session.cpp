@@ -329,6 +329,10 @@ void Session::run_string(const std::string& code,
         if (!decl) break;
 
         process_decl(std::move(*decl), out);
+        // Re-sync the parser's operator table after each declaration.
+        // This propagates operators from `uses`-loaded modules back into the
+        // outer parser so that subsequent declarations in this file can use them.
+        parser.op_table() = ops_;
     }
 
     // Merge any new operator declarations back into our accumulated table.
