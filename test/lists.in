@@ -1,0 +1,16 @@
+uses lists;
+member(3, [1, 2, 3, 4]);
+member(5, [1, 2, 3]);
+repeat(3, 7);
+head [1, 2, 3];
+tail [1, 2, 3];
+last [1, 2, 3];
+init [1, 2, 3];
+rotl [1, 2, 3];
+rotr [1, 2, 3];
+concat [[1,2],[3,4],[5]];
+sum [1, 2, 3, 4, 5];
+product [1, 2, 3, 4, 5];
+[1,2,3,4] -- [2,4];
+any [false, true, false];
+all [true, true, false];

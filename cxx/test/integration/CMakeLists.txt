@@ -27,6 +27,15 @@ set(INTEGRATION_TESTS
     sort
     tree
     list
+    functions
+    sums
+    range
+    ctype
+    lines
+    words
+    lists
+    products
+    diag
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)

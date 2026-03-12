@@ -1,0 +1,4 @@
+uses functions;
+curry (+) 3 4;
+const 42 99;
+times 3 (* 2) 1;

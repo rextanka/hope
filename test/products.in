@@ -1,0 +1,4 @@
+uses products;
+fst (1, 2);
+snd (3, 4);
+dup 5;

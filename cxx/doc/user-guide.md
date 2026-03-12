@@ -350,3 +350,9 @@ Additional positional arguments after all flags are collected as the Hope
   type annotations is not supported.
 - **Multi-parameter functors**: Only 1-parameter data/type declarations get
   auto-generated functors.
+- **Private function hiding**: Functions declared after `private;` in a module
+  are accessible from outside the module at the evaluator level.  Abstract type
+  representation hiding (`abstype`) is enforced correctly; value-level privacy is
+  not yet enforced.
+- **Infix type printing**: User-defined infix type constructors (e.g. `alpha OR beta`)
+  print in prefix form (`OR alpha beta`) in type error messages and `:type` output.

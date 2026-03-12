@@ -1,0 +1,9 @@
+uses ctype;
+isalpha 'a';
+isdigit '5';
+isupper 'A';
+islower 'b';
+toupper 'a';
+tolower 'Z';
+isspace ' ';
+isspace 'x';

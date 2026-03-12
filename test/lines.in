@@ -1,0 +1,4 @@
+uses lines;
+lines "hello\nworld\n";
+lines "foo\nbar";
+unlines ["a", "b", "c"];

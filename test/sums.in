@@ -1,0 +1,5 @@
+uses sums;
+Left 5;
+Right true;
+either (Left 7);
+either (Right 8);
