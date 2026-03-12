@@ -483,4 +483,4 @@ reimplementation in `cxx/` is released under the same GPL v2+ terms.
 ---
 
 *This repository is maintained at
-[github.com/NickThompsonSonos/hope](https://github.com/NickThompsonSonos/hope).*
+[github.com/rextanka/hope](https://github.com/rextanka/hope).*
