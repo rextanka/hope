@@ -98,7 +98,7 @@ Compiled into `hope_tests` (links `hope_lib` + GTest).  Test cases:
 | TypeTest | `test/unit/TypeTest.cpp` | HM unification, type inference, error reporting |
 | EvalTest | `test/unit/EvalTest.cpp` | evaluator, pattern matching, lazy thunks |
 
-### Integration tests (8 tests)
+### Integration tests (9 tests)
 
 Each integration test runs the `hope` binary against a `.in` file and diffs
 stdout+stderr against a committed `.out` file.
@@ -116,6 +116,7 @@ CTest via `cmake -P`.
 | `type_errs` | `test/type_errs.in` | Type error messages and recovery |
 | `maybe` | `test/maybe.in` | `maybe` stdlib module, `safe_head`, `safe_div` |
 | `seq` | `test/seq.in` | `seq` stdlib module, `front_seq`, `gen_seq` |
+| `arith` | `test/arith.in` | `arith` stdlib module, `fibs` (requires functor generation) |
 
 ### Environment variable: HOPEPATH
 

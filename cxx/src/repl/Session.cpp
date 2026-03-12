@@ -19,6 +19,196 @@
 namespace hope {
 
 // ---------------------------------------------------------------------------
+// Functor generation helpers (anonymous namespace)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Synthetic source location for auto-generated functor code.
+static const SourceLocation FUNCTOR_LOC{"<functor>", 0, 0, 0};
+
+// Recursively produce a (pattern, expression) pair for mapping a function f
+// over a value of type `tau`.
+//
+//   type_param : the type variable being mapped (e.g. "alpha")
+//   type_name  : the type being defined (for self-recursive references)
+//   ctr        : counter used to generate unique variable names (__x0, __x1, ...)
+//
+// Examples:
+//   tau = TVar{"alpha"}            → (PVar{"__x0"}, EApply{EVar{"__f"}, EVar{"__x0"}})
+//   tau = TProd{TVar{"alpha"},     → (PTuple{[__x0, __x1]},
+//               TCons{"list",...}}      ETuple{[__f __x0, list __f __x1]})
+struct PatExprPair { PatPtr pat; ExprPtr expr; };
+
+PatExprPair make_functor_pe(const Type& tau,
+                             const std::string& type_param,
+                             const std::string& type_name,
+                             int& ctr)
+{
+    return std::visit([&](const auto& v) -> PatExprPair {
+        using V = std::decay_t<decltype(v)>;
+
+        if constexpr (std::is_same_v<V, TVar>) {
+            std::string var = "__x" + std::to_string(ctr++);
+            PatPtr  p = make_pat(PVar{var}, FUNCTOR_LOC);
+            ExprPtr e;
+            if (v.name == type_param) {
+                // Apply f to this position
+                e = make_expr(
+                    EApply{make_expr(EVar{"__f"}, FUNCTOR_LOC),
+                           make_expr(EVar{var},   FUNCTOR_LOC)},
+                    FUNCTOR_LOC);
+            } else {
+                e = make_expr(EVar{var}, FUNCTOR_LOC);
+            }
+            return {std::move(p), std::move(e)};
+        }
+
+        if constexpr (std::is_same_v<V, TProd>) {
+            auto [pl, el] = make_functor_pe(*v.left,  type_param, type_name, ctr);
+            auto [pr, er] = make_functor_pe(*v.right, type_param, type_name, ctr);
+            std::vector<PatPtr>  pats;  pats.push_back(std::move(pl));  pats.push_back(std::move(pr));
+            std::vector<ExprPtr> exprs; exprs.push_back(std::move(el)); exprs.push_back(std::move(er));
+            return {
+                make_pat(PTuple{std::move(pats)},   FUNCTOR_LOC),
+                make_expr(ETuple{std::move(exprs)},  FUNCTOR_LOC)
+            };
+        }
+
+        if constexpr (std::is_same_v<V, TCons>) {
+            std::string var = "__x" + std::to_string(ctr++);
+            PatPtr  p = make_pat(PVar{var}, FUNCTOR_LOC);
+            ExprPtr e;
+            if (v.name == type_name) {
+                // Self-reference: apply T __f recursively
+                e = make_expr(
+                    EApply{
+                        make_expr(EApply{make_expr(EVar{type_name}, FUNCTOR_LOC),
+                                         make_expr(EVar{"__f"}, FUNCTOR_LOC)},
+                                  FUNCTOR_LOC),
+                        make_expr(EVar{var}, FUNCTOR_LOC)},
+                    FUNCTOR_LOC);
+            } else {
+                // Other type constructor: identity
+                e = make_expr(EVar{var}, FUNCTOR_LOC);
+            }
+            return {std::move(p), std::move(e)};
+        }
+
+        if constexpr (std::is_same_v<V, TFun>) {
+            // Function type: identity (not mapped)
+            std::string var = "__x" + std::to_string(ctr++);
+            return {make_pat(PVar{var}, FUNCTOR_LOC),
+                    make_expr(EVar{var}, FUNCTOR_LOC)};
+        }
+
+        // TMu: unfold one level and recurse
+        if constexpr (std::is_same_v<V, TMu>) {
+            return make_functor_pe(*v.body, type_param, type_name, ctr);
+        }
+
+        // Unreachable — all five Type alternatives covered above.
+        return {make_pat(PWild{}, FUNCTOR_LOC), make_expr(EVar{"_"}, FUNCTOR_LOC)};
+    }, tau.data);
+}
+
+// Build "dec T : (alpha -> beta) -> T alpha -> T beta;"
+Decl make_functor_dec(const std::string& type_name,
+                       const std::string& type_param)
+{
+    // Build the type:  (alpha -> beta) -> T alpha -> T beta
+    // T alpha
+    std::vector<TypePtr> a_args;
+    a_args.push_back(make_type(TVar{type_param}, FUNCTOR_LOC));
+    auto t_a = make_type(TCons{type_name, std::move(a_args)}, FUNCTOR_LOC);
+    // T beta  (using __beta to avoid clashing with user's own "beta" typevar)
+    std::vector<TypePtr> b_args;
+    b_args.push_back(make_type(TVar{"__beta"}, FUNCTOR_LOC));
+    auto t_b = make_type(TCons{type_name, std::move(b_args)}, FUNCTOR_LOC);
+    // alpha -> __beta
+    auto f_ty = make_type(TFun{make_type(TVar{type_param}, FUNCTOR_LOC),
+                                make_type(TVar{"__beta"}, FUNCTOR_LOC)}, FUNCTOR_LOC);
+    // (alpha -> __beta) -> T alpha -> T __beta
+    auto functor_ty = make_type(
+        TFun{std::move(f_ty),
+             make_type(TFun{std::move(t_a), std::move(t_b)}, FUNCTOR_LOC)},
+        FUNCTOR_LOC);
+    DDec dec;
+    dec.names = {type_name};
+    dec.type  = std::move(functor_ty);
+    return Decl{std::move(dec), FUNCTOR_LOC};
+}
+
+// Generate functor declarations for a data type.
+// Returns [DDec, DEquation, DEquation, ...] — one equation per constructor.
+std::vector<Decl> functor_decls_for_data(const DData& d)
+{
+    if (d.params.size() != 1) return {};          // only 1-param types get functors
+    const std::string& type_name  = d.name;
+    const std::string& type_param = d.params[0];
+
+    std::vector<Decl> result;
+    result.push_back(make_functor_dec(type_name, type_param));
+
+    int ctr = 0;
+    for (const auto& con : d.alts) {
+        DEquation eq;
+        eq.lhs.func     = type_name;
+        eq.lhs.is_infix = false;
+        // First argument pattern: the mapping function
+        eq.lhs.args.push_back(make_pat(PVar{"__f"}, FUNCTOR_LOC));
+
+        if (!con.arg.has_value()) {
+            // Nullary constructor C: --- T __f C <= C
+            eq.lhs.args.push_back(
+                make_pat(PCons{con.name, std::nullopt}, FUNCTOR_LOC));
+            eq.rhs = make_expr(EVar{con.name}, FUNCTOR_LOC);
+        } else {
+            // Unary constructor C(tau): --- T __f (C pat) <= C expr
+            auto [arg_pat, arg_expr] =
+                make_functor_pe(**con.arg, type_param, type_name, ctr);
+            std::optional<PatPtr> opt_arg =
+                std::make_optional(std::move(arg_pat));
+            eq.lhs.args.push_back(
+                make_pat(PCons{con.name, std::move(opt_arg)}, FUNCTOR_LOC));
+            eq.rhs = make_expr(
+                EApply{make_expr(EVar{con.name}, FUNCTOR_LOC),
+                       std::move(arg_expr)},
+                FUNCTOR_LOC);
+        }
+        result.push_back(Decl{std::move(eq), FUNCTOR_LOC});
+    }
+    return result;
+}
+
+// Generate functor declarations for a type synonym.
+// Returns [DDec, DEquation].
+std::vector<Decl> functor_decls_for_type(const DType& d)
+{
+    if (d.params.size() != 1 || !d.body) return {};
+    const std::string& type_name  = d.name;
+    const std::string& type_param = d.params[0];
+
+    std::vector<Decl> result;
+    result.push_back(make_functor_dec(type_name, type_param));
+
+    int ctr = 0;
+    auto [body_pat, body_expr] =
+        make_functor_pe(*d.body, type_param, type_name, ctr);
+
+    DEquation eq;
+    eq.lhs.func     = type_name;
+    eq.lhs.is_infix = false;
+    eq.lhs.args.push_back(make_pat(PVar{"__f"}, FUNCTOR_LOC));
+    eq.lhs.args.push_back(std::move(body_pat));
+    eq.rhs = std::move(body_expr);
+    result.push_back(Decl{std::move(eq), FUNCTOR_LOC});
+    return result;
+}
+
+} // anonymous namespace
+
+// ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
 
@@ -290,9 +480,17 @@ void Session::process_decl(Decl d, std::ostream& out) {
 
     // All other declarations: pass to the type checker (optionally) and
     // evaluator.  Since add_decl takes by value, we move d.
-    // For DData and DType, also type-check.
+    // For DData and DType, also type-check and generate functors.
     bool is_data = std::holds_alternative<DData>(d.data);
     bool is_type = std::holds_alternative<DType>(d.data);
+
+    // Build functor declarations BEFORE moving d into the evaluator.
+    std::vector<Decl> functors;
+    if (is_data) {
+        functors = functor_decls_for_data(std::get<DData>(d.data));
+    } else if (is_type) {
+        functors = functor_decls_for_type(std::get<DType>(d.data));
+    }
 
     if (is_data || is_type) {
         // Type-check first (before move).
@@ -308,6 +506,15 @@ void Session::process_decl(Decl d, std::ostream& out) {
 
     // Move into the evaluator.
     try { evaluator_.add_decl(std::move(d)); } catch (...) {}
+
+    // Register the auto-generated functor: type-check then eval.
+    // Done silently (no display recording, no output).
+    for (auto& fd : functors) {
+        try { type_checker_.check_decl(fd); } catch (...) {}
+        if (std::holds_alternative<DEquation>(fd.data)) {
+            try { evaluator_.add_decl(std::move(fd)); } catch (...) {}
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
