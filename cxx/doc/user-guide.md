@@ -47,6 +47,40 @@ works without setting `HOPEPATH` as long as you run it from within the repo.
 | 2 | `HOPELIB` compile-time constant (default: `<repo>/lib`) |
 | 3 | `<executable-dir>/../lib` (relative fallback) |
 
+### `HOPE_EDITOR` and `EDITOR`
+
+`HOPE_EDITOR` sets the editor launched by the `edit;` statement and the
+`:edit` REPL command.  It takes precedence over the generic `EDITOR`
+environment variable, which the interpreter also honours as a fallback.
+
+If neither variable is set the interpreter auto-detects VS Code (`code` or
+`code-insiders`) from `PATH`.  If VS Code is not found either, the command
+prints a message and returns to the prompt without launching an editor.
+
+**Editor selection order:**
+
+| Priority | Source |
+|----------|--------|
+| 1 (highest) | `HOPE_EDITOR` environment variable |
+| 2 | `EDITOR` environment variable |
+| 3 | Auto-detect `code` / `code-insiders` in PATH |
+| 4 | Error message (no editor found) |
+
+**Examples:**
+
+```bash
+export HOPE_EDITOR="code --wait"   # VS Code (--wait added automatically if omitted)
+export HOPE_EDITOR=nano            # nano in the terminal
+export HOPE_EDITOR=vim             # Vim in the terminal
+export HOPE_EDITOR="subl --wait"   # Sublime Text
+```
+
+`--wait` is appended automatically when `code` or `code-insiders` appear in
+`HOPE_EDITOR` without it — so `export HOPE_EDITOR=code` is equivalent to
+`export HOPE_EDITOR="code --wait"`.  For all other editors the value is used
+as-is; add `--wait` (or the editor's equivalent blocking flag) yourself if the
+command would otherwise return immediately.
+
 ---
 
 ## Running the interpreter
@@ -81,6 +115,7 @@ commands: **meta-commands** (prefixed with `:`) and **Hope-level commands**
 |---------|-------------|
 | `:load <file.hop>` | Load and execute a `.hop` file into the current session.  All declarations in the file become available immediately. |
 | `:reload` | Re-run the most recently loaded file (useful after editing). |
+| `:edit [module]` | Open a file in the configured editor (see [Editor configuration](#hope_editor-and-editor)), then reload it automatically when the editor exits.  Without a module name, edits the last loaded file; if no file has been loaded, opens a temp file containing the current session definitions. |
 | `:type <expr>` | Evaluate *expr* and display its value together with its inferred type. |
 | `:display` | List all user declarations entered in the current session. |
 | `:clear` | Clear session history (removes display records and reload state; standard library remains; definitions stay in scope). |
@@ -100,7 +135,7 @@ These are regular Hope statements entered at the prompt:
 | `save` *ModuleName*`;` | Write the current session definitions to *ModuleName*`.hop` in the current directory. |
 | `uses` *ModuleName*`;` | Load a library module and make its definitions available. |
 | `exit;` | Exit the interpreter (equivalent to `:quit`). |
-| `edit;` | *(Paterson original only — not implemented in C++20 interpreter.)* Invoke an editor on the current session definitions. |
+| `edit;` | Open the last loaded file (or the current session definitions in a temp file) in the configured editor, then reload automatically.  Equivalent to `:edit` at the meta-command prompt.  `edit` *ModuleName*`;` opens a specific module. |
 
 ### Evaluating expressions
 
@@ -390,7 +425,6 @@ Additional positional arguments after all flags are collected as the Hope
 - **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
   extension allowing lazy binding of pair patterns.  Not used by the standard
   library.
-- **`edit` command**: Parsed and accepted but not executed.
 - **Type annotations on expressions**: The syntax `(expr : type)` for inline
   type annotations is not supported.
 - **Multi-parameter functors**: Only 1-parameter data/type declarations get
@@ -399,5 +433,3 @@ Additional positional arguments after all flags are collected as the Hope
   are accessible from outside the module at the evaluator level.  Abstract type
   representation hiding (`abstype`) is enforced correctly; value-level privacy is
   not yet enforced.
-- **Infix type printing**: User-defined infix type constructors (e.g. `alpha OR beta`)
-  print in prefix form (`OR alpha beta`) in type error messages and `:type` output.

@@ -1,4 +1,4 @@
->> Left 5 : OR num alpha
->> Right true : OR alpha bool
+>> Left 5 : num OR alpha
+>> Right true : alpha OR bool
 >> 7 : num
 >> 8 : num

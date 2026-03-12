@@ -191,7 +191,7 @@ struct DUses    { std::vector<std::string> module_names; };
 struct DPrivate {};
 struct DSave    { std::string module_name; };
 struct DDisplay {};
-struct DEdit    {};
+struct DEdit    { std::string module_name; }; // empty = edit last loaded / temp
 struct DEval    { ExprPtr expr; };   // expr; (evaluate and print)
 
 struct Decl {

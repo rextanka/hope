@@ -69,6 +69,9 @@ private:
     // Are we currently loading silently (stdlib / uses module)?
     bool in_silent_load_ = false;
 
+    // Last file loaded via :load or run_file (for :reload and edit;).
+    std::string last_loaded_file_;
+
     // Input stream for the `input` builtin (default: std::cin).
     std::istream* input_stream_ = &std::cin;
 
@@ -92,6 +95,10 @@ private:
 
     // Load a module by name, searching lib_dir_.
     void load_module(const std::string& name, std::ostream& out);
+
+    // Open module_name (or a temp file of current defs if empty) in $EDITOR,
+    // then reload the file into the session on editor exit.
+    void run_edit(const std::string& module_name, std::ostream& out);
 
     // Format and write one evaluated expression result.
     void print_result(ValRef v, TyRef t, std::ostream& out);

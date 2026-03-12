@@ -30,6 +30,10 @@ struct PrintState {
     // Set of TyNode* currently being printed (cycle detection).
     std::set<TyNode*> visiting;
 
+    // Optional operator table — when set, 2-arg constructors declared infix
+    // are printed in infix form.
+    const OperatorTable* ops = nullptr;
+
     const std::string& name_for(int id) {
         auto it = var_names.find(id);
         if (it != var_names.end()) return it->second;
@@ -169,6 +173,10 @@ std::string print_ty(TyRef t, PrintState& st) {
         } else if (args.empty()) {
             result = name;
 
+        // Infix 2-arg constructor: arg0 name arg1  (e.g. `num OR alpha`)
+        } else if (args.size() == 2 && st.ops && st.ops->lookup(name).has_value()) {
+            result = atom_str(args[0], st) + " " + name + " " + atom_str(args[1], st);
+
         // Multi-arg constructor: name arg1 arg2 ...
         } else {
             result = name;
@@ -254,6 +262,12 @@ std::string print_ast_ty(const Type& t) {
 
 std::string print_type(TyRef t) {
     PrintState st;
+    return print_ty(t, st);
+}
+
+std::string print_type(TyRef t, const OperatorTable& ops) {
+    PrintState st;
+    st.ops = &ops;
     return print_ty(t, st);
 }
 

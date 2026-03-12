@@ -2,6 +2,8 @@
 
 #include "repl/Session.hpp"
 
+#include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -301,6 +303,11 @@ bool Session::run_file(const std::string& filepath, std::ostream& out) {
     std::ostringstream ss;
     ss << file.rdbuf();
     run_string(ss.str(), abs_path, out);
+
+    // Track the last user-loaded file (not standard library / module loads).
+    if (!in_silent_load_)
+        last_loaded_file_ = abs_path;
+
     return true;
 }
 
@@ -427,6 +434,13 @@ void Session::process_decl(Decl d, std::ostream& out) {
             f << rec << "\n";
         if (!in_silent_load_)
             out << "Saved to " << filename << ".\n";
+        return;
+    }
+
+    // Handle DEdit: open editor on named module (or last loaded file / temp).
+    if (auto* edit_alt = std::get_if<DEdit>(&d.data)) {
+        if (!in_silent_load_)
+            run_edit(edit_alt->module_name, out);
         return;
     }
 
@@ -642,12 +656,111 @@ void Session::print_result(ValRef v, TyRef t, std::ostream& out) {
 
     std::string type_str;
     try {
-        type_str = print_type(t);
+        type_str = print_type(t, ops_);
     } catch (...) {
         type_str = "_";
     }
 
     out << ">> " << val_str << " : " << type_str << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// run_edit
+// ---------------------------------------------------------------------------
+
+void Session::run_edit(const std::string& module_name, std::ostream& out) {
+    std::string filepath;
+    bool is_temp = false;
+
+    if (!module_name.empty()) {
+        // Locate the named module file.
+        std::string candidate = module_name + ".hop";
+        if (std::filesystem::exists(candidate)) {
+            filepath = candidate;
+        } else if (!lib_dir_.empty()) {
+            std::string lib_candidate = lib_dir_ + "/" + candidate;
+            if (std::filesystem::exists(lib_candidate))
+                filepath = lib_candidate;
+        }
+        if (filepath.empty()) {
+            out << "edit: module '" << module_name << "' not found.\n";
+            return;
+        }
+    } else if (!last_loaded_file_.empty()) {
+        // No module named: edit the last loaded file.
+        filepath = last_loaded_file_;
+    } else {
+        // No file context: write current definitions to a temp file.
+        filepath = "hope_edit_" + std::to_string(
+                       std::hash<std::string>{}(std::to_string(
+                           std::chrono::steady_clock::now().time_since_epoch().count()))
+                       % 100000) + ".hop";
+        is_temp = true;
+        std::ofstream f(filepath);
+        for (const auto& rec : display_records_)
+            f << rec << "\n";
+    }
+
+    // Determine editor.
+    // Priority: HOPE_EDITOR > EDITOR > auto-detect VS Code.
+    const char* hope_editor_env = std::getenv("HOPE_EDITOR");
+    const char* editor_env      = std::getenv("EDITOR");
+    std::string editor;
+
+    if (hope_editor_env && *hope_editor_env) {
+        // User explicitly chose an editor for Hope.
+        editor = hope_editor_env;
+    } else if (editor_env && *editor_env) {
+        // Fall back to the shell default editor.
+        editor = editor_env;
+    } else {
+        // Auto-detect VS Code.
+#if defined(_WIN32)
+        if (std::system("where code >nul 2>&1") == 0) editor = "code";
+#else
+        if (std::system("command -v code >/dev/null 2>&1") == 0)         editor = "code";
+        else if (std::system("command -v code-insiders >/dev/null 2>&1") == 0) editor = "code-insiders";
+#endif
+    }
+
+    if (editor.empty()) {
+        out << "edit: no editor configured.\n"
+            << "  Set HOPE_EDITOR (or EDITOR) to the command for your preferred editor, e.g.:\n"
+            << "    export HOPE_EDITOR=\"code --wait\"    # VS Code\n"
+            << "    export HOPE_EDITOR=nano              # terminal editor\n"
+            << "    export HOPE_EDITOR=vim\n"
+            << "  See the user guide (cxx/doc/user-guide.md) for details.\n";
+        if (is_temp) {
+            try { std::filesystem::remove(filepath); } catch (...) {}
+        }
+        return;
+    }
+
+    // VS Code and code-insiders need --wait to block until the tab is closed.
+    if ((editor.find("code") != std::string::npos ||
+         editor.find("code-insiders") != std::string::npos) &&
+        editor.find("--wait") == std::string::npos) {
+        editor += " --wait";
+    }
+
+    // Launch editor (blocks until exit for terminal editors and code --wait).
+    std::string cmd = editor + " \"" + filepath + "\"";
+    std::system(cmd.c_str());
+
+    // Reload: remove from loaded set so run_file accepts it.
+    try {
+        loaded_files_.erase(std::filesystem::absolute(filepath).string());
+    } catch (...) {
+        loaded_files_.erase(filepath);
+    }
+    last_loaded_file_ = filepath;
+    if (!run_file(filepath, out))
+        out << "edit: could not reload '" << filepath << "'\n";
+
+    // Clean up temp file.
+    if (is_temp) {
+        try { std::filesystem::remove(filepath); } catch (...) {}
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -657,9 +770,6 @@ void Session::print_result(ValRef v, TyRef t, std::ostream& out) {
 void Session::run_interactive(std::istream& in, std::ostream& out) {
     // Version banner.
     out << "Hope C++20 interpreter  (type :quit to exit)\n";
-
-    // Keep a last-loaded file path for :reload.
-    std::string last_loaded_file;
 
     // Input accumulator: Hope declarations can span multiple lines.
     // We accumulate until a top-level semicolon terminates the statement.
@@ -716,7 +826,6 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
                 if (path.empty()) {
                     out << "Usage: :load <file.hop>\n";
                 } else {
-                    last_loaded_file = path;
                     // Allow re-loading (remove from loaded set first).
                     try {
                         std::string abs = std::filesystem::absolute(path).string();
@@ -729,19 +838,22 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
                     }
                 }
             } else if (trimmed == ":reload") {
-                if (last_loaded_file.empty()) {
+                if (last_loaded_file_.empty()) {
                     out << "No file loaded yet.\n";
                 } else {
                     try {
-                        std::string abs = std::filesystem::absolute(last_loaded_file).string();
+                        std::string abs = std::filesystem::absolute(last_loaded_file_).string();
                         loaded_files_.erase(abs);
                     } catch (...) {
-                        loaded_files_.erase(last_loaded_file);
+                        loaded_files_.erase(last_loaded_file_);
                     }
-                    if (!run_file(last_loaded_file, out)) {
-                        out << "Error: could not open " << last_loaded_file << "\n";
+                    if (!run_file(last_loaded_file_, out)) {
+                        out << "Error: could not open " << last_loaded_file_ << "\n";
                     }
                 }
+            } else if (trimmed.substr(0, 5) == ":edit") {
+                std::string mod = trim(trimmed.substr(5));
+                run_edit(mod, out);
             } else if (trimmed.substr(0, 5) == ":type") {
                 std::string expr_src = trim(trimmed.substr(5));
                 if (expr_src.empty()) {
@@ -752,12 +864,13 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
                 }
             } else if (trimmed == ":help" || trimmed == ":?") {
                 out << "Meta-commands:\n"
-                    << "  :load <file>  load a .hop file\n"
-                    << "  :reload       reload last loaded file\n"
-                    << "  :type <expr>  show type of expression\n"
-                    << "  :display      list session definitions\n"
-                    << "  :clear        clear session history\n"
-                    << "  :quit / :exit exit the REPL\n";
+                    << "  :load <file>      load a .hop file\n"
+                    << "  :reload           reload last loaded file\n"
+                    << "  :edit [module]    open file in $EDITOR then reload\n"
+                    << "  :type <expr>      show type of expression\n"
+                    << "  :display          list session definitions\n"
+                    << "  :clear            clear session history\n"
+                    << "  :quit / :exit     exit the REPL\n";
             } else {
                 out << "Unknown command: " << trimmed
                     << "  (type :help for help)\n";
