@@ -1,0 +1,9 @@
+>> 2 : num
+>> 2 : num
+>> 2 : num
+>> (-) : num # num -> num
+>> lambda x' => 1 - x' : num -> num
+>> lambda x' => x' - 1 : num -> num
+
+dec minus : num -> num;
+--- minus <= (0 -);

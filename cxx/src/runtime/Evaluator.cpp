@@ -837,31 +837,49 @@ ValRef Evaluator::apply(ValRef fun, ValRef arg) {
 
 namespace {
 
-// A single step in applying a curried, multi-pattern clause.
-// Holds the clause being dispatched and the index of the NEXT pattern to
-// match.  The environment accumulated so far is also captured.
-struct CurriedApply {
-    Evaluator*                  ev;
-    const Evaluator::FuncClause* clause;   // raw pointer — AST outlives runtime
-    size_t                      next_pat;  // index of next pattern to match
-    Env                         env;       // accumulated bindings so far
-    std::string                 fname;     // for error messages
+// Multi-clause curried pattern dispatch with backtracking.
+//
+// When a function has N-argument clauses, matching argument k may succeed
+// for some clauses but fail for others at argument k+1.  This struct
+// tracks all STILL-LIVE clauses (those whose first k patterns matched) so
+// that when argument k+1 fails for one clause, the next live clause is
+// tried automatically — reproducing Hope's left-to-right, first-match
+// semantics without committing early.
+struct MultiCurried {
+    Evaluator* ev;
+
+    struct LiveClause {
+        const Evaluator::FuncClause* clause;  // AST outlives runtime
+        size_t                       next_pat;
+        Env                          env;
+    };
+
+    std::vector<LiveClause> live;
+    std::string             fname;
 
     ValRef operator()(ValRef arg) {
-        Env cur_env = env;
-        // Don't force eagerly — let match_pat force lazily as needed.
-        if (!ev->match_pat(*clause->pats[next_pat], arg, cur_env)) {
+        std::vector<LiveClause> next_live;
+
+        for (auto& lc : live) {
+            if (lc.next_pat >= lc.clause->pats.size()) continue;
+
+            Env cur_env = lc.env;
+            if (!ev->match_pat(*lc.clause->pats[lc.next_pat], arg, cur_env))
+                continue;   // this clause fails — try the next
+
+            size_t n = lc.next_pat + 1;
+            if (n == lc.clause->pats.size()) {
+                // All patterns matched — execute body (first-match wins)
+                return ev->eval_in(lc.clause->body, cur_env);
+            }
+            next_live.push_back({lc.clause, n, cur_env});
+        }
+
+        if (next_live.empty())
             throw RuntimeError("pattern match failure in function: " + fname,
                                SourceLocation{"<runtime>", 0, 0, 0});
-        }
-        size_t n = next_pat + 1;
-        if (n == clause->pats.size()) {
-            // All patterns matched — evaluate the body
-            return ev->eval_in(clause->body, cur_env);
-        }
-        // More patterns remain — return another curried function
-        CurriedApply next{ev, clause, n, cur_env, fname};
-        return make_fun(std::move(next));
+
+        return make_fun(MultiCurried{ev, std::move(next_live), fname});
     }
 };
 
@@ -870,23 +888,23 @@ struct CurriedApply {
 ValRef Evaluator::apply_clauses(const std::string& name,
                                  const std::vector<FuncClause>& clauses,
                                  ValRef arg, Env closed_env) {
+    // Collect all clauses whose first pattern matches `arg`.
+    // Single-pattern clauses that match are executed immediately (first-match).
+    // Multi-pattern clauses that match are deferred into a MultiCurried.
+    std::vector<MultiCurried::LiveClause> live;
+
     for (const auto& clause : clauses) {
         if (clause.pats.empty()) {
-            // Zero-argument clause
+            // Zero-argument clause — execute immediately
             return eval(*clause.body, closed_env);
         }
 
-        // For infix-pair clauses: match pats[0] and pats[1] against the
-        // left and right sides of the single VPair argument.  If there are
-        // additional patterns (e.g., --- (f o g) x <= f(g x)), return a
-        // curried function for the remaining args.
+        // Infix-pair clauses: pats[0] and pats[1] match the left and right
+        // sides of the single VPair argument.
         if (clause.is_infix_pair && clause.pats.size() >= 2) {
             ValRef forced = force(arg);
-            // Accept either a VPair (product) or a VCons with a VPair arg
-            // (user-defined infix constructor).
             const VPair* pr = std::get_if<VPair>(&forced->data);
             if (!pr) {
-                // Try VCons{op, has_arg, VPair{...}} for user-defined infix ctors
                 if (auto* vc = std::get_if<VCons>(&forced->data)) {
                     if (vc->has_arg) {
                         ValRef ca = force(vc->arg);
@@ -897,34 +915,34 @@ ValRef Evaluator::apply_clauses(const std::string& name,
             if (!pr) continue;
 
             Env match_env = closed_env;
-            if (!match(*clause.pats[0], pr->left, match_env)) continue;
+            if (!match(*clause.pats[0], pr->left,  match_env)) continue;
             if (!match(*clause.pats[1], pr->right, match_env)) continue;
             if (clause.pats.size() == 2) {
                 return eval(*clause.body, match_env);
             }
-            // Extra curried args (e.g., --- (f o g) x <= f(g x))
-            CurriedApply ca{this, &clause, 2, match_env, name};
-            return make_fun(std::move(ca));
+            // Extra curried args after the infix pair
+            live.push_back({&clause, 2, match_env});
+            continue;
         }
 
-        // Try to match the first pattern.
-        // Do NOT force here — let match() force lazily as needed.
+        // Regular clause: try to match the first pattern.
         Env match_env = closed_env;
-        if (!match(*clause.pats[0], arg, match_env)) {
-            continue; // try next clause
-        }
+        if (!match(*clause.pats[0], arg, match_env)) continue;
 
         if (clause.pats.size() == 1) {
+            // Fully matched — execute body immediately (first-match wins)
             return eval(*clause.body, match_env);
         }
 
-        // More patterns — return a curried function for the remaining patterns
-        CurriedApply ca{this, &clause, 1, match_env, name};
-        return make_fun(std::move(ca));
+        // More patterns needed — add to live set for backtracking dispatch
+        live.push_back({&clause, 1, match_env});
     }
 
-    throw RuntimeError("non-exhaustive patterns in function: " + name,
-                       SourceLocation{"<runtime>", 0, 0, 0});
+    if (live.empty())
+        throw RuntimeError("non-exhaustive patterns in function: " + name,
+                           SourceLocation{"<runtime>", 0, 0, 0});
+
+    return make_fun(MultiCurried{this, std::move(live), name});
 }
 
 // ---------------------------------------------------------------------------
@@ -1512,7 +1530,7 @@ void Evaluator::init_builtins() {
     // --- String / list functions ---
 
     // num2str: num -> list char
-    register_builtin("num2str", [this, get_num](ValRef v) -> ValRef {
+    register_builtin("num2str", [get_num](ValRef v) -> ValRef {
         double n = get_num(v);
         std::string s;
         if (n == std::floor(n) && std::isfinite(n)) {

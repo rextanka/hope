@@ -1,0 +1,17 @@
+  ord 23
+  ord : char -> num
+  23 : num
+line 1: type error - argument has wrong type
+  1 = 'a'
+  (=) : alpha # alpha -> bool
+  1 : num
+  'a' : char
+line 3: type error - argument has wrong type
+  [1, 'a', 'b', 'c']
+  (::) : alpha # list alpha -> list alpha
+  1 : num
+  "abc" : list char
+line 5: type error - argument has wrong type
+  declared type: alpha -> alpha
+  inferred type: num -> num
+line 8: type error - 'f': does not match declaration

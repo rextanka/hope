@@ -61,6 +61,8 @@ cxx/compile_commands.json
 *.exe
 *.out
 *.app
+# Exception: committed expected test outputs
+!cxx/test/expected/*.out
 *.i*86
 *.x86_64
 *.hex

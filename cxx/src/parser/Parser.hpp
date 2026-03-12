@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "ast/Ast.hpp"
@@ -34,9 +35,27 @@ public:
     // Expose the operator table so callers can seed it before parsing begins.
     OperatorTable& op_table() { return ops_; }
 
+    // Register a constructor name so patterns can distinguish constructors
+    // from variables even when the constructor starts with a lowercase letter.
+    void register_constructor(const std::string& name) {
+        known_constructors_.insert(name);
+    }
+
+    // Access the known constructor set (for sub-parser transfers).
+    const std::unordered_set<std::string>& known_constructors() const {
+        return known_constructors_;
+    }
+
 private:
     Lexer         lex_;
     OperatorTable ops_;
+
+    // Constructor names registered from data declarations.
+    // In Hope, constructors can be lowercase (e.g. node, leaf, empty) so we
+    // cannot use capitalisation alone to distinguish them from variables.
+    // This set is populated as data declarations are parsed, and also
+    // pre-scanned from module files loaded via 'uses'.
+    std::unordered_set<std::string> known_constructors_;
 
     // One token of lookahead.  The lexer is called lazily on demand.
     std::optional<Token> cur_;

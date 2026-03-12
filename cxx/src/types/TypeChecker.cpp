@@ -102,23 +102,42 @@ bool TypeChecker::real_unify(TyRef t1, TyRef t2,
     // Pointer equality — same node.
     if (t1.get() == t2.get()) return true;
 
-    // Occurs-check loop protection: if we've already seen this pair, return true
-    // (assumes regularity for recursive synonyms).
+    // Cycle / regularity check: have we already tried to unify this pair?
+    //
+    // We compare by SHALLOW STRUCTURAL KEY rather than just pointer identity.
+    // This is necessary for recursive type synonyms like
+    //   type seq alpha == alpha # seq alpha
+    // where each expansion of seq(T) creates a fresh allocation, yet each
+    // fresh node is structurally identical (same name, same arg pointers).
+    // Pointer identity alone would never detect the cycle.
+    //
+    // Shallow key: for a TyCons, identity = (name, arg-pointers).
+    // For any other node, identity = the TyRef pointer itself.
+    auto ty_match = [](const TyRef& a, const TyRef& b) -> bool {
+        if (a.get() == b.get()) return true;
+        auto* ca = std::get_if<TyCons>(&a->data);
+        auto* cb = std::get_if<TyCons>(&b->data);
+        if (!ca || !cb) return false;
+        if (ca->name != cb->name || ca->args.size() != cb->args.size()) return false;
+        for (size_t i = 0; i < ca->args.size(); ++i)
+            if (ca->args[i].get() != cb->args[i].get()) return false;
+        return true;
+    };
+
     for (auto& [a, b] : visited) {
-        if (a.get() == t1.get() && b.get() == t2.get()) return true;
-        if (a.get() == t2.get() && b.get() == t1.get()) return true;
+        if (ty_match(a, t1) && ty_match(b, t2)) return true;
+        if (ty_match(a, t2) && ty_match(b, t1)) return true;
     }
     visited.push_back({t1, t2});
 
     // ---- TyVar on left ----
-    if (auto* tv = std::get_if<TyVar>(&t1->data)) {
-        // tv is unbound (deref would have followed binding)
+    if (std::get_if<TyVar>(&t1->data)) {
         assign(t1, t2);
         return true;
     }
 
     // ---- TyVar on right ----
-    if (auto* tv = std::get_if<TyVar>(&t2->data)) {
+    if (std::get_if<TyVar>(&t2->data)) {
         assign(t2, t1);
         return true;
     }
@@ -629,7 +648,6 @@ TyRef TypeChecker::infer_expr(const Expr& e, VarEnv& vars) {
         else if constexpr (std::is_same_v<T, EList>) {
             TyRef elem_ty = new_tvar();
             TyRef first_ty;  // type of first element (for error reporting)
-            size_t first_idx = 0;
             for (size_t i = 0; i < alt.elems.size(); ++i) {
                 TyRef et = infer_expr(*alt.elems[i], vars);
                 if (i == 0) first_ty = et;

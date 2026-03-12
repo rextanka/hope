@@ -1,0 +1,33 @@
+>> 23 : num
+>> 15 : num
+>> 15 : num
+>> (12, 42, 36) : num # num # num
+>> [10, 20, 30, 40] : list num
+>> "cat" : list char
+>> [10, 9, 8, 7, 6, 5, 4, 3, 2, 1] : list num
+>> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] : list num
+>> 6 : num
+>> 15 : num
+>> (12, 42) : num # num
+>> "You" : list char
+>> ("Hope", "springs eternal ...") : list char # list char
+>> ["While", "there's", "life", "there's", "Hope"] : list (list char)
+>> 15 : num
+>> [1, 2, 3] : list num
+>> ["one", "two", "three"] : list (list char)
+>> [leaf 'a', notree, branch (leaf 'c', notree)] : list (tiptree char)
+>> [4, 16, 36] : list num
+>> [2, 24, 720] : list num
+>> 7 : num
+>> [3, 4, 8, 3, 8, 5, 4] : list num
+>> 6 : num
+>> 31 : num
+>> "     Aacddefiillmnnnnoooorssstt" : list char
+>> "   EMaadddegghilmnnnoss" : list char
+>> lambda (x, y) => x + y : num # num -> num
+>> "tictactoe" : list char
+>> [100, 0, 50, 0, 33] : list num
+>> lambda x => 3 + x : num -> num
+>> lambda x => square (square x) : num -> num
+>> 81 : num
+>> 43046721 : num

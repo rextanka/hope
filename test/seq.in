@@ -1,0 +1,3 @@
+uses seq, fold;
+front_seq(5, gen_seq (+ 1) 1);
+front_seq(4, gen_seq (* 2) 1);
