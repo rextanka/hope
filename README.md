@@ -288,6 +288,7 @@ interactive experience has been substantially improved.
 |---|---|
 | `expr;` | Evaluate and display value and type |
 | `write expr;` | Lazy streaming output (characters printed as computed) |
+| `write expr to "file";` | Write output to a named file |
 | `display;` | Display current definitions |
 | `save ModuleName;` | Save session to `ModuleName.hop` |
 | `edit;` | Open last loaded file in editor, then reload |

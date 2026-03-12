@@ -130,6 +130,7 @@ These are regular Hope statements entered at the prompt:
 |---------|-------------|
 | `expr;` | Evaluate *expr* and print `>> value : type`. |
 | `write expr;` | Stream the value of *expr* (a list) to stdout without the `>> … : type` wrapper.  Characters are printed directly; other elements are printed one per line.  Each element is output as soon as it is computed (lazy streaming). |
+| `write expr to "file";` | Like `write expr;` but output goes to *file* (created or overwritten). |
 | `display;` | Display all definitions entered in the current session (Hope-level equivalent of `:display`). |
 | `save` *ModuleName*`;` | Write the current session definitions to *ModuleName*`.hop` in the current directory. |
 | `uses` *ModuleName*`;` | Load a library module and make its definitions available. |
@@ -201,6 +202,16 @@ hope> write (front_seq(5, gen_seq (+ 1) 1));
 [1, 2, 3, 4, 5]
 ```
 
+To save output to a file, use `to "filename"`:
+
+```
+hope> write "hello world" to "output.txt";
+hope> write (front_seq(10, primes)) to "primes.txt";
+```
+
+The file is created (or overwritten) and receives the same output that
+`write expr;` would have printed to the terminal.
+
 ### Saving and reloading a session
 
 ```
@@ -259,6 +270,24 @@ escape the module.
 ---
 
 ## Language features
+
+### Reserved words
+
+The following identifiers cannot be used as variable or function names:
+
+```
+abstype data dec display edit else exit if in
+infix infixr lambda let letrec private save then
+to type typevar uses where whererec write
+```
+
+Synonyms accepted by this interpreter: `\` for `lambda`, `use` for `uses`,
+`infixrl` for `infixr`.
+
+The `to` keyword is reserved for `write expr to "file"` file output.
+`nonop` (prefix operator-as-value) is also reserved.
+
+---
 
 ### Data types
 

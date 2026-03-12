@@ -1,9 +1,11 @@
-// SessionTest.cpp — integration-style tests for Session (Phase 10).
+// SessionTest.cpp — integration-style tests for Session.
 //
 // Tests cover:
 //   SessionSave    — save command round-trip (sieve of Eratosthenes)
 //   SessionRunFile — run_file idempotency (same file loaded only once)
-//   SessionRunString — error recovery, write vs eval output, display; command
+//   SessionRunString — error recovery, write vs eval output, display; command,
+//                      write-to-file, type annotations, n+k patterns, functors,
+//                      private function hiding
 //   SessionInteractive — :display, :type, :clear, :load, :reload, :help,
 //                         unknown command, multi-line input accumulation
 
@@ -628,6 +630,26 @@ TEST(SessionRunString, BiParameterFunctor) {
 // ---------------------------------------------------------------------------
 // n+k patterns
 // ---------------------------------------------------------------------------
+
+TEST(SessionRunString, WriteToFile) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    auto out_path = std::filesystem::temp_directory_path() / "hope_write_test.txt";
+    std::filesystem::remove(out_path);   // ensure clean slate
+    std::ostringstream out;
+    ls.s.run_string(
+        "write \"hello from hope\" to \"" + out_path.string() + "\";",
+        "<test>", out);
+    // The REPL output should be silent (write suppresses >> result : type).
+    EXPECT_EQ(out.str(), "") << out.str();
+    // The file should have been created and contain the written text.
+    std::ifstream f(out_path);
+    ASSERT_TRUE(f.is_open()) << "file not created: " << out_path;
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "hello from hope");
+}
 
 TEST(SessionRunString, NPlusKPattern) {
     if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";

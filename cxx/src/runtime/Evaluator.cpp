@@ -820,16 +820,26 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
         }
 
         // ----------------------------------------------------------------
-        // EWrite — write expr (Hope's lazy I/O output)
+        // EWrite — write expr [to "file"] (Hope's lazy I/O output)
         // ----------------------------------------------------------------
         if constexpr (std::is_same_v<T, EWrite>) {
             ValRef val = eval(*d.expr, env);
             val = force(val);
-            // If it's a list of chars, print as raw characters
-            // Otherwise, print the value representation
+
+            // Determine output stream: stdout or a named file.
+            std::ofstream file_stream;
+            std::ostream* out = &std::cout;
+            if (d.file_path) {
+                file_stream.open(*d.file_path);
+                if (!file_stream)
+                    throw RuntimeError("cannot open file: " + *d.file_path, e.loc);
+                out = &file_stream;
+            }
+
+            // If it's a list, walk it lazily; chars print raw, other values
+            // print one per line via the value printer.
             auto* cons = std::get_if<VCons>(&val->data);
             if (cons && (cons->name == "::" || cons->name == "nil")) {
-                // Walk the list and print chars
                 ValRef cur = val;
                 while (true) {
                     cur = force(cur);
@@ -841,14 +851,14 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
                     if (!pr) break;
                     ValRef head = force(pr->left);
                     if (auto* ch = std::get_if<VChar>(&head->data)) {
-                        std::cout << ch->c;
+                        *out << ch->c;
                     } else {
-                        std::cout << print_value(head);
+                        *out << print_value(head);
                     }
                     cur = pr->right;
                 }
             } else {
-                std::cout << print_value(val);
+                *out << print_value(val);
             }
             // write returns the unit value (nil in our representation)
             return make_nil();
