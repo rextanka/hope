@@ -36,6 +36,7 @@ jobs:
     env:
       CC:  ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
