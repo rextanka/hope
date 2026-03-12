@@ -110,6 +110,7 @@ TokenKind Lexer::keyword_kind(std::string_view text) {
     if (text == "abstype")   return TokenKind::KW_ABSTYPE;
     if (text == "infix")     return TokenKind::KW_INFIX;
     if (text == "infixr")    return TokenKind::KW_INFIXR;
+    if (text == "infixrl")   return TokenKind::KW_INFIXR;  // backward-compat alias
     if (text == "letrec")    return TokenKind::KW_LETREC;
     if (text == "whererec")  return TokenKind::KW_WHEREREC;
     if (text == "uses")      return TokenKind::KW_USES;

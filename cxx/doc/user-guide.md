@@ -440,6 +440,10 @@ Additional positional arguments after all flags are collected as the Hope
 
 ## Known limitations
 
+- **`n+k` patterns**: The pattern `pat+k` (e.g. `fib(n+2)`) matches
+  arguments ≥ k and binds the remainder.  Not yet implemented.  Used in
+  Paterson's recursive Fibonacci example; the lazy-list `fibs` definition
+  works without it.
 - **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
   extension allowing lazy binding of pair patterns.  Not used by the standard
   library.

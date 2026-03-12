@@ -1,0 +1,9 @@
+>> false : bool
+>> true : bool
+>> "ab" : list var
+>> "abc" : list var
+>> [[('a', false)], [('a', true)]] : list assignment
+>> [[('a', false), ('b', false)], [('a', false), ('b', true)], [('a', true), ('b', false)], [('a', true), ('b', true)]] : list assignment
+>> [[('a', false), ('b', false), ('c', false)], [('a', false), ('b', false), ('c', true)], [('a', false), ('b', true), ('c', false)], [('a', false), ('b', true), ('c', true)], [('a', true), ('b', false), ('c', false)], [('a', true), ('b', false), ('c', true)], [('a', true), ('b', true), ('c', false)], [('a', true), ('b', true), ('c', true)]] : list assignment
+>> false : bool
+>> true : bool

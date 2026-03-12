@@ -1,0 +1,9 @@
+! Fibonacci via infinite lazy list -- Ross Paterson's Hope examples
+! Uses the circular whererec definition; || is the zip function from lists.
+
+uses lists;
+
+dec fibs : list num;
+--- fibs <= fs whererec fs == 1::1::map (+) (tail fs || fs);
+
+front(11, fibs);

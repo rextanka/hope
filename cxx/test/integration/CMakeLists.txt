@@ -36,6 +36,10 @@ set(INTEGRATION_TESTS
     lists
     products
     diag
+    examples_fact
+    examples_fibs
+    examples_bf
+    examples_boolexp
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)

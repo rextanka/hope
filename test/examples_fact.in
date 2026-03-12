@@ -1,0 +1,18 @@
+! Factorial -- Ross Paterson's Hope examples
+
+! Recursive version
+dec fact : num -> num;
+--- fact 0 <= 1;
+--- fact n <= n * fact(n - 1);
+
+fact 7;
+
+! List-based version using product and range
+uses lists, range;
+
+dec factp : num -> num;
+--- factp n <= product (1..n);
+
+factp 7;
+1..7;
+product [1, 2, 3, 4, 5, 6, 7];
