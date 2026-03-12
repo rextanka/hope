@@ -4,7 +4,7 @@
 
 This manual is not a tutorial on functional programming or on the language
 Hope.  If you don't know about both, start with Roger Bailey's tutorial
-(`doc/hope_tut.src` in this repository).
+([`hope_tut.md`](hope_tut.md) in this directory, converted from `doc/hope_tut.src`).
 
 ---
 
