@@ -29,21 +29,20 @@ namespace {
 // Synthetic source location for auto-generated functor code.
 static const SourceLocation FUNCTOR_LOC{"<functor>", 0, 0, 0};
 
-// Recursively produce a (pattern, expression) pair for mapping a function f
-// over a value of type `tau`.
+// Recursively produce a (pattern, expression) pair for mapping functions over
+// a value of type `tau`.
 //
-//   type_param : the type variable being mapped (e.g. "alpha")
-//   type_name  : the type being defined (for self-recursive references)
-//   ctr        : counter used to generate unique variable names (__x0, __x1, ...)
+//   type_params : the type variables being mapped, e.g. ["alpha", "beta"]
+//                 param[i] is mapped by function variable "__f_<i>"
+//   type_name   : the type being defined (for self-recursive references)
+//   ctr         : counter used to generate unique value variables (__x0, __x1, ...)
 //
-// Examples:
-//   tau = TVar{"alpha"}            → (PVar{"__x0"}, EApply{EVar{"__f"}, EVar{"__x0"}})
-//   tau = TProd{TVar{"alpha"},     → (PTuple{[__x0, __x1]},
-//               TCons{"list",...}}      ETuple{[__f __x0, list __f __x1]})
+// For a 1-param type the single function is named "__f_0".
+// For 2-param types they are "__f_0" and "__f_1".
 struct PatExprPair { PatPtr pat; ExprPtr expr; };
 
 PatExprPair make_functor_pe(const Type& tau,
-                             const std::string& type_param,
+                             const std::vector<std::string>& type_params,
                              const std::string& type_name,
                              int& ctr)
 {
@@ -54,11 +53,14 @@ PatExprPair make_functor_pe(const Type& tau,
             std::string var = "__x" + std::to_string(ctr++);
             PatPtr  p = make_pat(PVar{var}, FUNCTOR_LOC);
             ExprPtr e;
-            if (v.name == type_param) {
-                // Apply f to this position
+            // Find which function argument to apply (if any).
+            auto it = std::find(type_params.begin(), type_params.end(), v.name);
+            if (it != type_params.end()) {
+                std::string fn = "__f_" + std::to_string(
+                    static_cast<int>(it - type_params.begin()));
                 e = make_expr(
-                    EApply{make_expr(EVar{"__f"}, FUNCTOR_LOC),
-                           make_expr(EVar{var},   FUNCTOR_LOC)},
+                    EApply{make_expr(EVar{fn},  FUNCTOR_LOC),
+                           make_expr(EVar{var}, FUNCTOR_LOC)},
                     FUNCTOR_LOC);
             } else {
                 e = make_expr(EVar{var}, FUNCTOR_LOC);
@@ -67,8 +69,8 @@ PatExprPair make_functor_pe(const Type& tau,
         }
 
         if constexpr (std::is_same_v<V, TProd>) {
-            auto [pl, el] = make_functor_pe(*v.left,  type_param, type_name, ctr);
-            auto [pr, er] = make_functor_pe(*v.right, type_param, type_name, ctr);
+            auto [pl, el] = make_functor_pe(*v.left,  type_params, type_name, ctr);
+            auto [pr, er] = make_functor_pe(*v.right, type_params, type_name, ctr);
             std::vector<PatPtr>  pats;  pats.push_back(std::move(pl));  pats.push_back(std::move(pr));
             std::vector<ExprPtr> exprs; exprs.push_back(std::move(el)); exprs.push_back(std::move(er));
             return {
@@ -82,13 +84,17 @@ PatExprPair make_functor_pe(const Type& tau,
             PatPtr  p = make_pat(PVar{var}, FUNCTOR_LOC);
             ExprPtr e;
             if (v.name == type_name) {
-                // Self-reference: apply T __f recursively
+                // Self-reference: apply T __f_0 __f_1 ... recursively.
+                ExprPtr app = make_expr(EVar{type_name}, FUNCTOR_LOC);
+                for (size_t i = 0; i < type_params.size(); ++i) {
+                    std::string fn = "__f_" + std::to_string(i);
+                    app = make_expr(
+                        EApply{std::move(app),
+                               make_expr(EVar{fn}, FUNCTOR_LOC)},
+                        FUNCTOR_LOC);
+                }
                 e = make_expr(
-                    EApply{
-                        make_expr(EApply{make_expr(EVar{type_name}, FUNCTOR_LOC),
-                                         make_expr(EVar{"__f"}, FUNCTOR_LOC)},
-                                  FUNCTOR_LOC),
-                        make_expr(EVar{var}, FUNCTOR_LOC)},
+                    EApply{std::move(app), make_expr(EVar{var}, FUNCTOR_LOC)},
                     FUNCTOR_LOC);
             } else {
                 // Other type constructor: identity
@@ -106,7 +112,7 @@ PatExprPair make_functor_pe(const Type& tau,
 
         // TMu: unfold one level and recurse
         if constexpr (std::is_same_v<V, TMu>) {
-            return make_functor_pe(*v.body, type_param, type_name, ctr);
+            return make_functor_pe(*v.body, type_params, type_name, ctr);
         }
 
         // Unreachable — all five Type alternatives covered above.
@@ -114,30 +120,43 @@ PatExprPair make_functor_pe(const Type& tau,
     }, tau.data);
 }
 
-// Build "dec T : (alpha -> beta) -> T alpha -> T beta;"
+// Build the functor type declaration for an n-parameter type.
+//
+// For n=1 (params = ["alpha"]):
+//   dec T : (alpha -> __r_0) -> T alpha -> T __r_0;
+//
+// For n=2 (params = ["alpha", "beta"]):
+//   dec T : (alpha -> __r_0) -> (beta -> __r_1) -> T alpha beta -> T __r_0 __r_1;
 Decl make_functor_dec(const std::string& type_name,
-                       const std::string& type_param)
+                       const std::vector<std::string>& params)
 {
-    // Build the type:  (alpha -> beta) -> T alpha -> T beta
-    // T alpha
-    std::vector<TypePtr> a_args;
-    a_args.push_back(make_type(TVar{type_param}, FUNCTOR_LOC));
-    auto t_a = make_type(TCons{type_name, std::move(a_args)}, FUNCTOR_LOC);
-    // T beta  (using __beta to avoid clashing with user's own "beta" typevar)
-    std::vector<TypePtr> b_args;
-    b_args.push_back(make_type(TVar{"__beta"}, FUNCTOR_LOC));
-    auto t_b = make_type(TCons{type_name, std::move(b_args)}, FUNCTOR_LOC);
-    // alpha -> __beta
-    auto f_ty = make_type(TFun{make_type(TVar{type_param}, FUNCTOR_LOC),
-                                make_type(TVar{"__beta"}, FUNCTOR_LOC)}, FUNCTOR_LOC);
-    // (alpha -> __beta) -> T alpha -> T __beta
-    auto functor_ty = make_type(
-        TFun{std::move(f_ty),
-             make_type(TFun{std::move(t_a), std::move(t_b)}, FUNCTOR_LOC)},
-        FUNCTOR_LOC);
+    // Build T params (source)
+    std::vector<TypePtr> src_args;
+    for (const auto& p : params)
+        src_args.push_back(make_type(TVar{p}, FUNCTOR_LOC));
+    auto t_src = make_type(TCons{type_name, std::move(src_args)}, FUNCTOR_LOC);
+
+    // Build T __r_0 __r_1 ... (target)
+    std::vector<TypePtr> tgt_args;
+    for (size_t i = 0; i < params.size(); ++i)
+        tgt_args.push_back(make_type(TVar{"__r_" + std::to_string(i)}, FUNCTOR_LOC));
+    auto t_tgt = make_type(TCons{type_name, std::move(tgt_args)}, FUNCTOR_LOC);
+
+    // Build (T src -> T tgt) — the result of applying all function args
+    TypePtr result_ty = make_type(TFun{std::move(t_src), std::move(t_tgt)}, FUNCTOR_LOC);
+
+    // Prepend (params[i] -> __r_i) -> ... from right to left
+    for (int i = static_cast<int>(params.size()) - 1; i >= 0; --i) {
+        auto f_ty = make_type(
+            TFun{make_type(TVar{params[i]}, FUNCTOR_LOC),
+                 make_type(TVar{"__r_" + std::to_string(i)}, FUNCTOR_LOC)},
+            FUNCTOR_LOC);
+        result_ty = make_type(TFun{std::move(f_ty), std::move(result_ty)}, FUNCTOR_LOC);
+    }
+
     DDec dec;
     dec.names = {type_name};
-    dec.type  = std::move(functor_ty);
+    dec.type  = std::move(result_ty);
     return Decl{std::move(dec), FUNCTOR_LOC};
 }
 
@@ -145,30 +164,30 @@ Decl make_functor_dec(const std::string& type_name,
 // Returns [DDec, DEquation, DEquation, ...] — one equation per constructor.
 std::vector<Decl> functor_decls_for_data(const DData& d)
 {
-    if (d.params.size() != 1) return {};          // only 1-param types get functors
-    const std::string& type_name  = d.name;
-    const std::string& type_param = d.params[0];
+    if (d.params.empty()) return {};              // nullary types have no functor
+    const std::string& type_name = d.name;
 
     std::vector<Decl> result;
-    result.push_back(make_functor_dec(type_name, type_param));
+    result.push_back(make_functor_dec(type_name, d.params));
 
     int ctr = 0;
     for (const auto& con : d.alts) {
         DEquation eq;
         eq.lhs.func     = type_name;
         eq.lhs.is_infix = false;
-        // First argument pattern: the mapping function
-        eq.lhs.args.push_back(make_pat(PVar{"__f"}, FUNCTOR_LOC));
+        // One argument pattern per type parameter: __f_0, __f_1, ...
+        for (size_t i = 0; i < d.params.size(); ++i)
+            eq.lhs.args.push_back(make_pat(PVar{"__f_" + std::to_string(i)}, FUNCTOR_LOC));
 
         if (!con.arg.has_value()) {
-            // Nullary constructor C: --- T __f C <= C
+            // Nullary constructor C: --- T __f_0 ... C <= C
             eq.lhs.args.push_back(
                 make_pat(PCons{con.name, std::nullopt}, FUNCTOR_LOC));
             eq.rhs = make_expr(EVar{con.name}, FUNCTOR_LOC);
         } else {
-            // Unary constructor C(tau): --- T __f (C pat) <= C expr
+            // Unary constructor C(tau): --- T __f_0 ... (C pat) <= C expr
             auto [arg_pat, arg_expr] =
-                make_functor_pe(**con.arg, type_param, type_name, ctr);
+                make_functor_pe(**con.arg, d.params, type_name, ctr);
             std::optional<PatPtr> opt_arg =
                 std::make_optional(std::move(arg_pat));
             eq.lhs.args.push_back(
@@ -187,21 +206,21 @@ std::vector<Decl> functor_decls_for_data(const DData& d)
 // Returns [DDec, DEquation].
 std::vector<Decl> functor_decls_for_type(const DType& d)
 {
-    if (d.params.size() != 1 || !d.body) return {};
-    const std::string& type_name  = d.name;
-    const std::string& type_param = d.params[0];
+    if (d.params.empty() || !d.body) return {};
+    const std::string& type_name = d.name;
 
     std::vector<Decl> result;
-    result.push_back(make_functor_dec(type_name, type_param));
+    result.push_back(make_functor_dec(type_name, d.params));
 
     int ctr = 0;
     auto [body_pat, body_expr] =
-        make_functor_pe(*d.body, type_param, type_name, ctr);
+        make_functor_pe(*d.body, d.params, type_name, ctr);
 
     DEquation eq;
     eq.lhs.func     = type_name;
     eq.lhs.is_infix = false;
-    eq.lhs.args.push_back(make_pat(PVar{"__f"}, FUNCTOR_LOC));
+    for (size_t i = 0; i < d.params.size(); ++i)
+        eq.lhs.args.push_back(make_pat(PVar{"__f_" + std::to_string(i)}, FUNCTOR_LOC));
     eq.lhs.args.push_back(std::move(body_pat));
     eq.rhs = std::move(body_expr);
     result.push_back(Decl{std::move(eq), FUNCTOR_LOC});
@@ -411,6 +430,13 @@ void Session::process_decl(Decl d, std::ostream& out) {
         return;
     }
 
+    // Handle DPrivate: everything declared after this point in a module load
+    // is private and will be hidden from external callers after the load.
+    if (std::holds_alternative<DPrivate>(d.data)) {
+        if (in_silent_load_) in_private_section_ = true;
+        return;
+    }
+
     // Handle DInfix: update our operator table.
     if (auto* infix_alt = std::get_if<DInfix>(&d.data)) {
         Assoc assoc = infix_alt->right_assoc ? Assoc::Right : Assoc::Left;
@@ -487,6 +513,12 @@ void Session::process_decl(Decl d, std::ostream& out) {
     // Handle DDec: type-check and record for display.
     if (std::holds_alternative<DDec>(d.data)) {
         try { type_checker_.check_decl(d); } catch (...) {}
+        // Track private function names so we can hide them after module load.
+        if (in_silent_load_ && in_private_section_) {
+            const auto& dec = std::get<DDec>(d.data);
+            for (const auto& n : dec.names)
+                module_private_names_.push_back(n);
+        }
         if (!in_silent_load_) {
             const auto& dec = std::get<DDec>(d.data);
             if (dec.type) {
@@ -602,10 +634,14 @@ void Session::load_module(const std::string& name, std::ostream& out) {
     }
 
     // Load the module silently.
-    // Save and clear module_abstypes_ so that abstypes declared by THIS module
-    // (and not by any parent module still being loaded) are tracked separately.
-    auto outer_abstypes = std::move(module_abstypes_);
+    // Save and clear module_abstypes_ / module_private_names_ / in_private_section_
+    // so that each module's private section is tracked independently.
+    auto outer_abstypes      = std::move(module_abstypes_);
+    auto outer_private_names = std::move(module_private_names_);
+    bool outer_private_flag  = in_private_section_;
     module_abstypes_.clear();
+    module_private_names_.clear();
+    in_private_section_ = false;
 
     bool old_flag = in_silent_load_;
     in_silent_load_ = true;
@@ -625,8 +661,18 @@ void Session::load_module(const std::string& name, std::ostream& out) {
         type_env_.add_typedef(std::move(td));
     }
 
-    // Restore the parent module's accumulator.
-    module_abstypes_ = std::move(outer_abstypes);
+    // Hide private function declarations: remove their FuncDecl entries from
+    // TypeEnv so that code outside the module cannot reference them by name.
+    // The evaluator closures still hold references to the private functions,
+    // so they continue to work when called indirectly from public functions.
+    for (const auto& name : module_private_names_) {
+        type_env_.remove_funcdecl(name);
+    }
+
+    // Restore the parent module's accumulators.
+    module_abstypes_      = std::move(outer_abstypes);
+    module_private_names_ = std::move(outer_private_names);
+    in_private_section_   = outer_private_flag;
 }
 
 // ---------------------------------------------------------------------------

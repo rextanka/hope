@@ -401,4 +401,37 @@ const FuncDecl* TypeEnv::lookup_func(const std::string& name) const {
     return fd;
 }
 
+// ---------------------------------------------------------------------------
+// remove_funcdecl
+// ---------------------------------------------------------------------------
+
+void TypeEnv::remove_funcdecl(const std::string& name) {
+    auto it = funcdecls_.find(name);
+    if (it == funcdecls_.end()) return;
+
+    const FuncDecl* fd = it->second.get();
+
+    // Determine the canonical name and all aliases.
+    std::string canonical = name;
+    std::vector<std::string> all_names;
+
+    if (fd->type != nullptr) {
+        // This is the canonical entry; names list holds all aliases.
+        all_names = fd->names;
+        if (!all_names.empty()) canonical = all_names[0];
+    } else if (!fd->names.empty()) {
+        // This is an alias entry; redirect to canonical.
+        canonical = fd->names[0];
+        auto it2 = funcdecls_.find(canonical);
+        if (it2 != funcdecls_.end())
+            all_names = it2->second->names;
+    }
+
+    // Remove canonical and all alias entries.
+    funcdecls_.erase(canonical);
+    for (const auto& n : all_names) {
+        if (n != canonical) funcdecls_.erase(n);
+    }
+}
+
 } // namespace hope

@@ -569,5 +569,80 @@ TEST(SessionRunString, TypeAnnotationMismatch) {
     EXPECT_NE(out.str().find("type error"), std::string::npos) << out.str();
 }
 
+// ---------------------------------------------------------------------------
+// Private function hiding
+// ---------------------------------------------------------------------------
+
+TEST(SessionRunString, PrivateFunctionHiding) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    // Write a module with a private section into a temp dir.
+    auto tmpdir = std::filesystem::temp_directory_path() / "hope_priv_test";
+    std::filesystem::create_directories(tmpdir);
+    {
+        std::ofstream f(tmpdir / "privmod.hop");
+        f << "dec visible : num -> num;\n";
+        f << "--- visible n <= hidden n;\n";
+        f << "private;\n";
+        f << "dec hidden : num -> num;\n";
+        f << "--- hidden n <= n * 2;\n";
+    }
+    // Copy Standard.hop so the session can load stdlib from tmpdir.
+    std::filesystem::copy_file(
+        std::filesystem::path(kLibDir) / "Standard.hop",
+        tmpdir / "Standard.hop",
+        std::filesystem::copy_options::overwrite_existing);
+
+    Session s;
+    s.set_lib_dir(tmpdir.string());
+    bool loaded = s.load_standard(tmpdir.string());
+    ASSERT_TRUE(loaded);
+
+    std::ostringstream out;
+    s.run_string("uses privmod;", "<test>", out);
+    out.str("");
+    s.run_string("visible 7;", "<test>", out);
+    EXPECT_NE(out.str().find("14"), std::string::npos) << out.str();
+    out.str("");
+    s.run_string("hidden 7;", "<test>", out);
+    EXPECT_NE(out.str().find("type error"), std::string::npos) << out.str();
+}
+
+// ---------------------------------------------------------------------------
+// Multi-parameter functors
+// ---------------------------------------------------------------------------
+
+TEST(SessionRunString, BiParameterFunctor) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    ls.s.run_string(
+        "data pair alpha beta == MkPair(alpha # beta);\n"
+        "pair (+1) not (MkPair(3, true));",
+        "<test>", out);
+    EXPECT_NE(out.str().find("MkPair"), std::string::npos) << out.str();
+    EXPECT_NE(out.str().find("4"), std::string::npos) << out.str();
+    EXPECT_NE(out.str().find("false"), std::string::npos) << out.str();
+}
+
+// ---------------------------------------------------------------------------
+// n+k patterns
+// ---------------------------------------------------------------------------
+
+TEST(SessionRunString, NPlusKPattern) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    ls.s.run_string(
+        "dec fib : num -> num;\n"
+        "--- fib 0 <= 1;\n"
+        "--- fib 1 <= 1;\n"
+        "--- fib(n+2) <= fib n + fib(n+1);\n"
+        "fib 10;",
+        "<test>", out);
+    EXPECT_NE(out.str().find("89"), std::string::npos) << out.str();
+}
+
 } // namespace
 } // namespace hope
