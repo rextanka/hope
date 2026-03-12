@@ -93,9 +93,10 @@ private:
     std::pair<std::string, std::vector<std::string>> parse_typecon_lhs();
 
     // --- Pattern parsers ---
-    PatPtr  parse_pattern();         // top-level pattern, handles :: infix
-    PatPtr  parse_pattern_app();     // constructor application
-    PatPtr  parse_pattern_atom();    // atom: var, lit, (), [], _
+    PatPtr  parse_pattern();              // top-level pattern, handles :: infix
+    PatPtr  parse_pattern_app();          // constructor application
+    PatPtr  parse_pattern_atom();         // atom: var, lit, (), [], _
+    PatPtr  parse_irrefutable_pattern();  // let/where LHS: only var or (irref, ...)
 
     // Parse the equation LHS after '---': either prefix or infix form.
     EquationLHS parse_equation_lhs();

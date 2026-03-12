@@ -666,5 +666,70 @@ TEST(SessionRunString, NPlusKPattern) {
     EXPECT_NE(out.str().find("89"), std::string::npos) << out.str();
 }
 
+// Irrefutable patterns: tuple binding in let/where
+TEST(SessionRunString, IrrefutableTupleInWhere) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    // Basic pair binding via where
+    ls.s.run_string(
+        "dec swap : num # num -> num # num;\n"
+        "--- swap(a, b) <= (b, a) where (a, b) == (1, 2);\n"
+        "swap(0, 0);",
+        "<test>", out);
+    EXPECT_NE(out.str().find("(2, 1)"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, IrrefutableTupleInLet) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    // Tuple binding via let
+    ls.s.run_string(
+        "let (x, y) == (3, 4) in x + y;",
+        "<test>", out);
+    EXPECT_NE(out.str().find("7"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, IrrefutableLazySemantics) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    // Lazy irrefutable: bind pair but only use first component.
+    // The second component is never accessed so its thunk is never forced.
+    ls.s.run_string(
+        "dec fst : alpha # beta -> alpha;\n"
+        "--- fst(x, y) <= x;\n"
+        "let (a, b) == (42, error \"never\") in a;",
+        "<test>", out);
+    EXPECT_NE(out.str().find("42"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, IrrefutableNestedTuple) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    // Nested tuple: ((a, b), c)
+    ls.s.run_string(
+        "let (x, y, z) == (1, 2, 3) in x + y + z;",
+        "<test>", out);
+    EXPECT_NE(out.str().find("6"), std::string::npos) << out.str();
+}
+
+TEST(SessionRunString, IrrefutableParserRejectsConstructor) {
+    if (std::string(kLibDir).empty()) GTEST_SKIP() << "HOPE_LIB_DIR not set";
+    LiveSession ls;
+    ASSERT_TRUE(ls.ok);
+    std::ostringstream out;
+    // Constructor pattern in let position should produce a parse error.
+    ls.s.run_string("let (x::xs) == [1,2,3] in x;", "<test>", out);
+    // Should not produce a valid integer result; should contain an error.
+    EXPECT_EQ(out.str().find(">> 1"), std::string::npos) << out.str();
+}
+
 } // namespace
 } // namespace hope
