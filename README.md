@@ -477,7 +477,7 @@ and with the kind of interactive feedback that learners now expect.
 
 Ross Paterson's original interpreter is distributed under the **GNU General
 Public License, version 2 or later**.  Roger Bailey's Hope Tutorial is
-included with permission and is not covered by the GPL.  The C++20
+included and is not covered by the GPL.  The C++20
 reimplementation in `cxx/` is released under the same GPL v2+ terms.
 
 ---
