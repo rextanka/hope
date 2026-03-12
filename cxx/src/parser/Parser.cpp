@@ -1100,7 +1100,12 @@ ExprPtr Parser::parse_application() {
             t.kind == TokenKind::CHAR_LIT   ||
             t.kind == TokenKind::STR_LIT    ||
             t.kind == TokenKind::LPAREN     ||
-            t.kind == TokenKind::LBRACKET;
+            t.kind == TokenKind::LBRACKET   ||
+            // Non-infix, non-delimiter OPERATOR tokens can be atoms (e.g. `{}`).
+            (t.kind == TokenKind::OPERATOR && !ops_.lookup(t.text) &&
+             t.text != "|"  && t.text != "=>" && t.text != "<=" &&
+             t.text != "==" && t.text != "++" && t.text != "--" &&
+             t.text != "#");
 
         if (!is_atom_start) break;
 
@@ -1124,6 +1129,23 @@ ExprPtr Parser::parse_atom() {
 
     if (t.kind == TokenKind::IDENT) {
         return make_expr(EVar{advance().text}, loc);
+    }
+
+    // Operator symbols used as nullary value expressions (not declared infix,
+    // not reserved as grammar delimiters like `|`, `=>`, `<=`, `==`).
+    // In Hope, graphic-character sequences such as `{}` can be declared as
+    // functions (e.g. `dec {} : set alpha`) and used in expression position.
+    // We allow them here when they are NOT grammar delimiters.
+    if (t.kind == TokenKind::OPERATOR && !ops_.lookup(t.text)) {
+        // Never consume tokens that serve as grammar delimiters.
+        const std::string& tx = t.text;
+        bool is_delimiter =
+            tx == "|"  || tx == "=>" || tx == "<=" ||
+            tx == "==" || tx == "++" || tx == "--" ||
+            tx == "#";
+        if (!is_delimiter) {
+            return make_expr(EVar{advance().text}, loc);
+        }
     }
 
     if (t.kind == TokenKind::INT_LIT) {

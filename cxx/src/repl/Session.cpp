@@ -428,6 +428,28 @@ void Session::process_decl(Decl d, std::ostream& out) {
     // Handle type-checker-only declarations (no eval involvement needed).
     if (std::holds_alternative<DAbsType>(d.data) ||
         std::holds_alternative<DTypeVar>(d.data)) {
+        // When loading a module, record abstract type declarations so that
+        // their names can be "sealed" back to abstract after the module load
+        // completes (the module's private section may define a type synonym
+        // for the representation, which must not escape the module).
+        if (in_silent_load_ && std::holds_alternative<DAbsType>(d.data)) {
+            const auto& abs = std::get<DAbsType>(d.data);
+            std::visit([&](const auto& v) {
+                using V = std::decay_t<decltype(v)>;
+                AbstypeRecord rec;
+                if constexpr (std::is_same_v<V, TCons>) {
+                    rec.name = v.name;
+                    for (const auto& a : v.args) {
+                        if (auto* tv = std::get_if<TVar>(&a->data))
+                            rec.params.push_back(tv->name);
+                    }
+                    module_abstypes_.push_back(std::move(rec));
+                } else if constexpr (std::is_same_v<V, TVar>) {
+                    rec.name = v.name;
+                    module_abstypes_.push_back(std::move(rec));
+                }
+            }, abs.type->data);
+        }
         try { type_checker_.check_decl(d); } catch (...) {}
         return;
     }
@@ -550,11 +572,31 @@ void Session::load_module(const std::string& name, std::ostream& out) {
     }
 
     // Load the module silently.
+    // Save and clear module_abstypes_ so that abstypes declared by THIS module
+    // (and not by any parent module still being loaded) are tracked separately.
+    auto outer_abstypes = std::move(module_abstypes_);
+    module_abstypes_.clear();
+
     bool old_flag = in_silent_load_;
     in_silent_load_ = true;
     std::ostringstream sink;
     run_file(path, sink);
     in_silent_load_ = old_flag;
+
+    // Seal abstract types: if the module's private section defined a type
+    // synonym `type T alpha == rep` for an `abstype T alpha` declared in the
+    // public section, that synonym has now been registered in TypeEnv.  Overwrite
+    // it back to abstract so the representation does not leak outside the module.
+    for (const auto& rec : module_abstypes_) {
+        TypeDef td;
+        td.name   = rec.name;
+        td.params = rec.params;
+        td.def    = std::monostate{};
+        type_env_.add_typedef(std::move(td));
+    }
+
+    // Restore the parent module's accumulator.
+    module_abstypes_ = std::move(outer_abstypes);
 }
 
 // ---------------------------------------------------------------------------

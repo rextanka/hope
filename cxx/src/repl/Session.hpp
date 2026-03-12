@@ -76,6 +76,17 @@ private:
     // string (one or more lines) representing a user declaration.
     std::vector<std::string> display_records_;
 
+    // Abstract type declarations accumulated while loading a module.
+    // Used to "seal" abstract types after the module load completes:
+    // a module's private section may define `type T alpha == ...` to give
+    // the representation of `abstype T alpha`, but that synonym must not
+    // be visible outside the module.
+    struct AbstypeRecord {
+        std::string              name;
+        std::vector<std::string> params;
+    };
+    std::vector<AbstypeRecord> module_abstypes_;
+
     // Process a single parsed declaration (takes ownership to allow move-into evaluator).
     void process_decl(Decl d, std::ostream& out);
 

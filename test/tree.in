@@ -1,0 +1,4 @@
+uses tree;
+fold_tree(0, lambda(x, l, r) => l + x + r) (Branch(5, Branch(3, Tip, Tip), Branch(7, Tip, Tip)));
+flatten (Branch(5, Branch(3, Tip, Tip), Branch(7, Tip, Tip)));
+fold_tree(0, lambda(x, l, r) => l + x + r) Tip;
