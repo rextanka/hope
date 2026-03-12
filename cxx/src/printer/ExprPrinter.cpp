@@ -3,6 +3,7 @@
 #include "printer/ExprPrinter.hpp"
 
 #include <sstream>
+#include <string>
 #include <unordered_set>
 
 namespace hope {
