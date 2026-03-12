@@ -854,6 +854,11 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
             return make_nil();
         }
 
+        // EAnnotate — type annotation is erased at runtime; just eval the expr.
+        if constexpr (std::is_same_v<T, EAnnotate>) {
+            return eval(*d.expr, env);
+        }
+
         throw RuntimeError("unknown expression type", e.loc);
     }, e.data);
 }
