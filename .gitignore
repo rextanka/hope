@@ -9,14 +9,8 @@ src/config.h.in
 src/stamp-h.in
 src/Makefile
 src/hope
-src/hope.1
-src/hopelib.h
-src/op.sed
-src/yyparse.c
-src/yyparse.h
 lib/Makefile
 doc/Makefile
-doc/Standard.tex
 doc/op.tex
 doc/ref_man.aux
 doc/ref_man.dvi

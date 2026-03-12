@@ -65,7 +65,12 @@ struct VThunk {                               // unevaluated lazy closure
 
 struct VHole  {};                             // black hole: detected infinite loop
 
-using ValueData = std::variant<VNum, VChar, VCons, VPair, VFun, VThunk, VHole>;
+struct VProj  {                               // lazy pair projection (irrefutable binding)
+    ValRef source;                            // the pair (a thunk until forced)
+    bool   take_left;                         // true → .left, false → .right
+};
+
+using ValueData = std::variant<VNum, VChar, VCons, VPair, VFun, VThunk, VHole, VProj>;
 
 struct Value {
     ValueData data;

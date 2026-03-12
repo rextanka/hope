@@ -390,6 +390,70 @@ front(5, iterate (* 2) 1);
 ! >> [1, 2, 4, 8, 16] : list num
 ```
 
+### Local bindings and irrefutable patterns
+
+Hope provides four forms of local binding:
+
+| Form | Description |
+|------|-------------|
+| `let pat == e1 in e2` | Non-recursive binding: evaluate `e1`, bind `pat`, then evaluate `e2` |
+| `letrec pat == e1 in e2` | Recursive binding: variables in `pat` may appear in `e1` |
+| `e2 where pat == e1` | Same as `let`, written postfix |
+| `e2 whererec pat == e1` | Same as `letrec`, written postfix |
+
+The binding pattern `pat` in all four forms must be **irrefutable** — it may only
+be a variable or a tuple of irrefutable patterns.  Constructor patterns (e.g.
+`x::xs`), literal patterns, and list patterns are not permitted in binding
+position; they belong in function equations.
+
+This restriction mirrors Paterson's grammar rule for `let`/`where` (his `tuple`
+non-terminal), and ensures that bindings always succeed.
+
+**Irrefutable semantics — lazy binding**
+
+Because Hope uses call-by-need evaluation, a tuple binding is fully lazy: the
+right-hand side is not forced until one of the bound variables is first accessed.
+This is Paterson's key extension over Imperial HOPE.
+
+```hope
+! Tuple binding: (a, b) pattern in where clause
+dec span : (alpha -> bool) # list alpha -> list alpha # list alpha;
+--- span cond (x::xs) <=
+        if cond x
+        then (x::f, a)
+        where (f, a) == span cond xs
+        else ([], x::xs);
+--- span cond [] <= ([], []);
+```
+
+```hope
+! Lazy binding: the second component is never forced
+dec fst : alpha # beta -> alpha;
+--- fst(x, y) <= x;
+
+let (a, b) == (42, error "never used") in a;
+! >> 42 : num
+! 'b' is never accessed so error "never used" is never evaluated
+```
+
+```hope
+! Nested tuples: (x, y, z) is right-nested (x, (y, z))
+let (x, y, z) == (1, 2, 3) in x + y + z;
+! >> 6 : num
+```
+
+**Parse error on non-irrefutable patterns**
+
+Placing a constructor pattern in binding position is a parse error:
+
+```hope
+let (x::xs) == [1,2,3] in x;
+! Parse error: expected variable or tuple pattern in let/where binding
+```
+
+See also: `ref_man.md` §4.3 for the formal grammar of `let`/`where` and the
+definition of irrefutable patterns.
+
 ---
 
 ## Examples
@@ -503,6 +567,5 @@ Additional positional arguments after all flags are collected as the Hope
 
 ## Known limitations
 
-- **Irrefutable patterns** (`~p`): Not yet implemented.  These are a Paterson
-  extension allowing lazy binding of pair patterns.  Not used by the standard
-  library.
+No known limitations at this time.  All features described in Paterson's
+reference manual are implemented.

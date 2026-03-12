@@ -1386,13 +1386,56 @@ ExprPtr Parser::parse_paren_expr() {
 // Local bindings  (let/letrec/where/whererec)
 // ============================================================
 
-// Parses ONE binding: pat == expr, for let/letrec/where/whererec.
+// parse_irrefutable_pattern: only variables and tuples thereof.
+// This is the correct LHS grammar for let/letrec/where/whererec bindings,
+// matching Paterson's 'tuple' grammar rule:
+//   tuple ::= ident | tuple ',' tuple | '(' tuple ')'
+PatPtr Parser::parse_irrefutable_pattern() {
+    SourceLocation loc = peek().loc;
+
+    if (peek().kind == TokenKind::IDENT) {
+        auto tok = advance();
+        return make_pat(PVar{tok.text}, tok.loc);
+    }
+
+    if (peek().kind == TokenKind::LPAREN) {
+        advance(); // consume '('
+        // Check for unit '()'
+        if (peek().kind == TokenKind::RPAREN) {
+            auto rloc = advance().loc;
+            return make_pat(PTuple{{}}, rloc);
+        }
+        PatPtr first = parse_irrefutable_pattern();
+        if (peek().kind == TokenKind::RPAREN) {
+            advance(); // consume ')'
+            return first; // parenthesised single pattern
+        }
+        // Tuple: (p1, p2, ...)
+        std::vector<PatPtr> elems;
+        elems.push_back(std::move(first));
+        while (peek().kind == TokenKind::COMMA) {
+            advance(); // consume ','
+            elems.push_back(parse_irrefutable_pattern());
+        }
+        if (peek().kind != TokenKind::RPAREN)
+            throw ParseError("expected ')' in tuple pattern", peek().loc);
+        advance(); // consume ')'
+        return make_pat(PTuple{std::move(elems)}, loc);
+    }
+
+    throw ParseError(
+        "expected variable or tuple pattern in let/where binding "
+        "(only irrefutable patterns — variables and pairs — are allowed here)",
+        peek().loc);
+}
+
+// Parses ONE binding: irrefutable-pat == expr, for let/letrec/where/whererec.
 // After the binding, consumes 'in' if present (let/letrec form).
 std::vector<LocalBind> Parser::parse_local_binds() {
     std::vector<LocalBind> binds;
 
     SourceLocation loc = peek().loc;
-    PatPtr lhs = parse_pattern();      // binding LHS: variable, tuple, or infix pattern
+    PatPtr lhs = parse_irrefutable_pattern();
     expect_op("==", "in local binding");
     ExprPtr body = parse_expr_prec(0);
     binds.push_back(LocalBind{std::move(lhs), std::move(body), loc});

@@ -19,8 +19,9 @@
 
 This repository preserves two things:
 
-- **Ross Paterson's lazy Hope interpreter**, written in C around 1990–1993 and
-  originally hosted at City University London.  The files vanished from the web
+- **Ross Paterson's lazy Hope interpreter**, written in C from 1988 to 1999,
+  originally for an undergraduate course (CS225) at the University of Queensland
+  and later hosted at City University London.  The files vanished from the web
   around 2013; this copy was retrieved from the Internet Archive and patched to
   build on modern macOS and Linux.  The original text is archived as
   [`readme`](readme) at the repository root.
@@ -304,7 +305,7 @@ A REPL error does not terminate the session.
 ```bash
 cmake --preset release          # configure
 cmake --build --preset release  # build
-ctest --preset release          # run tests (341 tests)
+ctest --preset release          # run tests (347 tests)
 ```
 
 The `hope` binary is placed in `cxx/build_release/`.
@@ -342,13 +343,28 @@ was analysed in depth.  The results are in `claude-docs/`:
 
 ### History
 
-Ross Paterson wrote this interpreter at the Department of Computing, City
-University London, around 1990–1993.  It was distributed freely from his
-departmental web page and formed the basis for practical Hope programming
-long after Imperial's original strict interpreter had ceased to be maintained.
+Ross Paterson began this interpreter in 1988 for an undergraduate course
+(CS225) at the **University of Queensland**.  Development continued through
+1999, when the source was cleaned up, converted to autoconf, and released
+under the GPL.  The full revision history is in [`src/HISTORY`](src/HISTORY).
 
-The original page at `http://www.soi.city.ac.uk/~ross/Hope/` disappeared
-around 2013.  It can still be viewed via the Internet Archive:
+Key milestones from that record:
+
+| Date | Event |
+|------|-------|
+| Jul 1988 | Initial version for CS225 at University of Queensland |
+| Mar 1989 | Operator sections added |
+| Nov 1989 | Back end rewritten to use a **Krivine machine** (with Andrew Moran) |
+| Jul 1990 | Switched to mark-scan GC; `letrec`/`whererec` added |
+| Jan 1993 | Regular types (recursive type synonyms) |
+| Apr 1993 | Auto-generated functor (`map`) for every type constructor |
+| Mar 1995 | Cyclic types printed in mu-notation; mu-expressions added |
+| Aug 1995 | Black hole optimisation (detects infinite loops) |
+| Apr 1999 | Cleanup, autoconf, GPL release |
+
+The interpreter was later hosted at City University London, where Paterson
+held a position, at `http://www.soi.city.ac.uk/~ross/Hope/`.  That page
+disappeared around 2013 and is preserved in the Internet Archive:
 
 - https://web.archive.org/web/20131022235656/http://www.soi.city.ac.uk/~ross/Hope/
 
@@ -469,6 +485,8 @@ and with the kind of interactive feedback that learners now expect.
   repository.  His implementation extended the language in several important
   directions and kept Hope usable long after the original Imperial code had
   ceased to be maintained.
+- **Andrew Moran** — co-author of the Krivine machine back-end rewrite (1989)
+  that gave the interpreter its lazy evaluation semantics.
 - **Djordje Baturin** — whose fork (`dmbaturin/hope` on GitHub) provided an
   early reference point for getting the code to build on modern Linux.
 - All contributors to the Alvey Programme and to the broader UK functional

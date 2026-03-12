@@ -108,6 +108,17 @@ ValRef Evaluator::force(ValRef v) {
             // Update in place so all other holders see the forced value
             v->data = result->data;
             return v;
+        } else if (auto* vp = std::get_if<VProj>(&v->data)) {
+            // Lazy pair projection: force source, extract left or right component.
+            // Memoize the result in-place (same strategy as VThunk).
+            ValRef src = force(vp->source);
+            auto* pr = std::get_if<VPair>(&src->data);
+            if (!pr) throw RuntimeError("irrefutable pattern: value is not a pair",
+                                        SourceLocation{"<runtime>", 0, 0, 0});
+            ValRef component = vp->take_left ? pr->left : pr->right;
+            component = force(component);
+            v->data = component->data;
+            return v;
         } else if (std::holds_alternative<VHole>(v->data)) {
             throw RuntimeError("infinite loop detected (black hole)",
                                SourceLocation{"<runtime>", 0, 0, 0});
@@ -743,14 +754,49 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
         // ----------------------------------------------------------------
         // ELet — non-recursive local binding
         // ----------------------------------------------------------------
+        // bind_irrefutable: lazily bind an irrefutable pattern (PVar or PTuple)
+        // against val WITHOUT forcing val.  Each variable is bound to a VProj
+        // thunk that only forces the pair when the variable is first accessed.
+        // This gives true lazy/irrefutable semantics: `let (x,y) = ⊥ in "ok"`
+        // succeeds because neither x nor y is accessed.
+        auto bind_irrefutable = [&](auto& self, const Pattern& pat,
+                                    ValRef val, Env& out_env) -> void {
+            if (auto* pv = std::get_if<PVar>(&pat.data)) {
+                out_env = env_extend(out_env, pv->name, val);
+                return;
+            }
+            if (std::holds_alternative<PWild>(pat.data)) {
+                return; // discard
+            }
+            if (auto* pt = std::get_if<PTuple>(&pat.data)) {
+                if (pt->elems.empty()) return;
+                const auto& pats = pt->elems;
+                // Walk right-nested VPair structure lazily.
+                // (p0, p1, ..., pn-1) is stored as VPair{p0, VPair{p1, ... pn-1}}.
+                // We create VProj thunks: no forcing until components are accessed.
+                ValRef cur = val;
+                for (size_t i = 0; i < pats.size(); ++i) {
+                    if (i + 1 == pats.size()) {
+                        // Last element: bind to cur directly (whole right sub-pair).
+                        self(self, *pats[i], cur, out_env);
+                    } else {
+                        auto proj_left = std::make_shared<Value>(VProj{cur, true});
+                        self(self, *pats[i], proj_left, out_env);
+                        cur = std::make_shared<Value>(VProj{cur, false});
+                    }
+                }
+                return;
+            }
+            // Non-irrefutable pattern: fall back to strict matching.
+            if (!match(pat, val, out_env))
+                throw RuntimeError("let/where binding pattern match failed", pat.loc);
+        };
+
         if constexpr (std::is_same_v<T, ELet>) {
             Env new_env = env;
             for (const auto& bind : d.binds) {
                 ValRef val = make_thunk(bind.body.get(), new_env);
-                if (!match(*bind.pat, val, new_env)) {
-                    throw RuntimeError("let binding pattern match failed",
-                                       bind.loc);
-                }
+                bind_irrefutable(bind_irrefutable, *bind.pat, val, new_env);
             }
             return eval(*d.body, new_env);
         }
@@ -772,13 +818,9 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
                     // Point the thunk's env back at new_env (enables recursion)
                     std::get<VThunk>(placeholder->data).env = new_env;
                 } else {
-                    // For complex patterns, evaluate eagerly and then match
-                    // (true recursive pattern bindings are unusual in Hope)
+                    // Tuple (irrefutable) binding in letrec: use lazy projection.
                     ValRef val = make_thunk(bind.body.get(), new_env);
-                    if (!match(*bind.pat, val, new_env)) {
-                        throw RuntimeError("letrec binding pattern match failed",
-                                           bind.loc);
-                    }
+                    bind_irrefutable(bind_irrefutable, *bind.pat, val, new_env);
                 }
             }
             return eval(*d.body, new_env);
@@ -791,10 +833,7 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
             Env new_env = env;
             for (const auto& bind : d.binds) {
                 ValRef val = make_thunk(bind.body.get(), new_env);
-                if (!match(*bind.pat, val, new_env)) {
-                    throw RuntimeError("where binding pattern match failed",
-                                       bind.loc);
-                }
+                bind_irrefutable(bind_irrefutable, *bind.pat, val, new_env);
             }
             return eval(*d.body, new_env);
         }
@@ -810,11 +849,9 @@ ValRef Evaluator::eval(const Expr& e, Env env) {
                     new_env = env_extend(new_env, pv->name, placeholder);
                     std::get<VThunk>(placeholder->data).env = new_env;
                 } else {
+                    // Tuple (irrefutable) binding in whererec: use lazy projection.
                     ValRef val = make_thunk(bind.body.get(), new_env);
-                    if (!match(*bind.pat, val, new_env)) {
-                        throw RuntimeError("whererec binding pattern match failed",
-                                           bind.loc);
-                    }
+                    bind_irrefutable(bind_irrefutable, *bind.pat, val, new_env);
                 }
             }
             return eval(*d.body, new_env);
