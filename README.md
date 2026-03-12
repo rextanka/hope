@@ -275,12 +275,12 @@ interactive experience has been substantially improved.
 |---|---|
 | `:load <file.hop>` | Load a Hope source file into the session |
 | `:reload` | Reload the last loaded file |
-| `:save <Module>` | Save current session definitions to `Module.hop` |
+| `:edit [module]` | Open file in `$HOPE_EDITOR` / `$EDITOR` then reload automatically |
 | `:type <expr>` | Evaluate and display the type of an expression |
 | `:display` | List all definitions in the current session |
-| `:clear` | Reset the session to the initial state |
+| `:clear` | Reset the session history |
 | `:help` or `:?` | Show available commands |
-| `:quit` or `:exit` | Exit the interpreter |
+| `:quit`, `:exit`, or `:q` | Exit the interpreter |
 
 **Hope-level session commands** (as in Paterson's original):
 
@@ -288,9 +288,9 @@ interactive experience has been substantially improved.
 |---|---|
 | `expr;` | Evaluate and display value and type |
 | `write expr;` | Lazy streaming output (characters printed as computed) |
-| `write expr to "file";` | Write output to a named file |
 | `display;` | Display current definitions |
 | `save ModuleName;` | Save session to `ModuleName.hop` |
+| `edit;` | Open last loaded file in editor, then reload |
 | `uses ModuleName;` | Import a module |
 | `exit;` | Exit |
 
@@ -303,7 +303,7 @@ A REPL error does not terminate the session.
 ```bash
 cmake --preset release          # configure
 cmake --build --preset release  # build
-ctest --preset release          # run tests (285 tests)
+ctest --preset release          # run tests (341 tests)
 ```
 
 The `hope` binary is placed in `cxx/build_release/`.
