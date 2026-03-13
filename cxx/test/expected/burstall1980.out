@@ -1,0 +1,9 @@
+>> 1 : num
+>> 1 : num
+>> 89 : num
+>> [5, 4, 3, 2, 1] : list num
+>> node (tip, 3, node (tip, 5, tip)) : tree alpha
+>> 11 : num
+>> [0, 1, 2, 3, 4] : list num
+>> [10, 11, 12, 13, 14] : list num
+>> [1, 1, 2, 3, 4, 5, 6, 9] : list num

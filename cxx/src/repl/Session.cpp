@@ -340,6 +340,11 @@ void Session::run_string(const std::string& code,
     Lexer lex(code, source_name);
     Parser parser(std::move(lex));
     parser.op_table() = ops_;
+    // Seed the parser with constructors from prior data declarations so that
+    // lowercase constructor names (e.g. `node`, `onode`) are recognised in
+    // patterns even when defined in a previous run_string call.
+    for (const auto& name : known_constructors_)
+        parser.register_constructor(name);
 
     while (true) {
         std::optional<Decl> decl;
@@ -361,8 +366,10 @@ void Session::run_string(const std::string& code,
         parser.op_table() = ops_;
     }
 
-    // Merge any new operator declarations back into our accumulated table.
+    // Merge any new operator/constructor declarations back into our accumulated state.
     ops_ = parser.op_table();
+    for (const auto& name : parser.known_constructors())
+        known_constructors_.insert(name);
 }
 
 // ---------------------------------------------------------------------------

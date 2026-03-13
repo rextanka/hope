@@ -70,6 +70,16 @@ simple recursion to higher-order functions and polymorphism.  The tutorial
 remains one of the clearest introductions to functional programming ever
 written.
 
+Hope's standing as a teaching language is confirmed by its adoption in two
+significant textbooks.  **Glaser, Hankin, and Till**'s *Principles of
+Functional Programming* (Prentice Hall, 1984) devotes a chapter to Hope in a
+comparative survey that also covers KRC, SUGAR, LISP, and Miranda.  More
+strikingly, **Field and Harrison**'s *Functional Programming* (Addison-Wesley,
+1988), a 595-page textbook from Imperial College, uses Hope as the *primary*
+teaching language throughout Part I, from basic function definitions to
+user-defined data types and higher-order functions; Appendix A is a complete
+Hope BNF and predefined-function reference.
+
 The Imperial implementation was a *strict* (call-by-value) interpreter.
 Sadly, the original Imperial source code has not been located; this repository
 contains only Paterson's later lazy implementation.
@@ -498,6 +508,15 @@ Ross Paterson's original interpreter is distributed under the **GNU General
 Public License, version 2 or later**.  Roger Bailey's Hope Tutorial is
 included and is not covered by the GPL.  The C++20
 reimplementation in `cxx/` is released under the same GPL v2+ terms.
+
+---
+
+### Primary sources
+
+For an annotated bibliography of all primary sources — including the founding
+1980 paper, Bailey's *Byte* tutorial, the Field & Harrison textbook, the Glaser
+*et al.* survey, the Dettmer Alvey article, and BibTeX entries for all of them
+— see [`cxx/doc/primary-sources.md`](cxx/doc/primary-sources.md).
 
 ---
 
