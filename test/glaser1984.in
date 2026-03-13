@@ -1,0 +1,63 @@
+! Examples from: Glaser, Hankin & Till (1984)
+! "Principles of Functional Programming"
+! Prentice Hall International, Chapter 8.3: HOPE
+!
+! Also draws on: Field & Harrison (1988)
+! "Functional Programming", Addison-Wesley
+! Chapter 2: "An introduction to functional programming through Hope"
+
+! --- Factorial (ch. 8.3, basic equations) ---
+
+dec fac : num -> num;
+--- fac(0) <= 1;
+--- fac(n) <= n * fac(n - 1);
+
+fac(0);
+fac(5);
+fac(10);
+
+! --- Lazy natural numbers from n (ch. 8.3, lazy semantics) ---
+! In the book: uses lcons (original Hope); here we use :: (Paterson extension)
+
+dec from : num -> list num;
+--- from n <= n :: from(n + 1);
+
+uses list;
+
+front(8, from(1));
+
+! --- Polymorphic conditional (ch. 8.3, polymorphism discussion) ---
+! poly(b, x, y) returns x if b is true, y otherwise
+
+dec poly : bool # alpha # alpha -> alpha;
+--- poly(a, b, c) <= if a then b else c;
+
+poly(true, 42, 0);
+poly(false, 42, 0);
+
+! --- Union type (ch. 8.3, data abstractions) ---
+! Glaser introduces sum types to show value-level polymorphism.
+
+data union alpha beta == first(alpha) ++ second(beta);
+
+first(42);
+second(true);
+
+! --- Stack abstract type (ch. 8.3.2, data abstractions) ---
+! Presented as an abstract type in the book; shown here with visible constructors
+
+data stack alpha == empty_s ++ push(alpha # stack alpha);
+
+dec top : stack alpha -> alpha;
+dec pop : stack alpha -> stack alpha;
+dec isempty : stack alpha -> bool;
+
+--- top(push(x, _)) <= x;
+--- pop(push(_, xs)) <= xs;
+--- isempty(empty_s) <= true;
+--- isempty(push(_, _)) <= false;
+
+top(push(1, push(2, push(3, empty_s))));
+pop(push(1, push(2, push(3, empty_s))));
+isempty(empty_s);
+isempty(push(1, empty_s));

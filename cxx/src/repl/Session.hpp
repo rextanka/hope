@@ -9,6 +9,7 @@
 #include <iostream>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "modules/ModuleLoader.hpp"
@@ -55,6 +56,9 @@ public:
 private:
     std::string      lib_dir_;
     OperatorTable    ops_;
+    // Constructor names accumulated across run_string calls so that each new
+    // parser can recognise lowercase constructors from prior data declarations.
+    std::unordered_set<std::string> known_constructors_;
     TypeEnv          type_env_;
     TypeChecker      type_checker_;
     Evaluator        evaluator_;

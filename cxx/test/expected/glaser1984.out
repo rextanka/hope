@@ -1,0 +1,12 @@
+>> 1 : num
+>> 120 : num
+>> 3628800 : num
+>> [1, 2, 3, 4, 5, 6, 7, 8] : list num
+>> 42 : num
+>> 0 : num
+>> first 42 : union num alpha
+>> second true : union alpha bool
+>> 1 : num
+>> push (2, push (3, empty_s)) : stack num
+>> true : bool
+>> false : bool

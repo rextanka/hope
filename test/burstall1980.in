@@ -1,0 +1,82 @@
+! Examples from: Burstall, MacQueen & Sannella (1980)
+! "HOPE: An Experimental Applicative Language"
+! Proc. 1980 LISP Conference, Stanford, pp. 136-143
+! Also: CSR-62-80, Dept of Computer Science, University of Edinburgh
+!
+! Code adapted to Paterson's lazy Hope (lcons -> ::, module syntax updated).
+
+! --- Section 3.4: Fibonacci numbers (p.139) ---
+
+dec fib : num -> num;
+--- fib(0) <= 1;
+--- fib(succ(0)) <= 1;
+--- fib(succ(succ(n))) <= fib(succ(n)) + fib(n);
+
+fib(0);
+fib(1);
+fib(10);
+
+! --- Section 3.3: Reverse (p.138) ---
+
+dec reverse : list alpha -> list alpha;
+--- reverse(nil) <= nil;
+--- reverse(a :: l) <= reverse(l) <> [a];
+
+reverse([1, 2, 3, 4, 5]);
+
+! --- Section 3.1: Parametric tree type (p.137) ---
+
+data tree alpha == tip ++ node(tree alpha # num # tree alpha);
+
+node(tip, 3, node(tip, 5, tip));
+
+! --- Section 3.4: Function composition (p.139) ---
+
+typevar tau;
+dec compose : (alpha -> beta) # (tau -> alpha) -> tau -> beta;
+--- compose(f, g) <= lambda x => f(g x);
+
+dec double : num -> num;
+--- double n <= n * 2;
+
+dec inc : num -> num;
+--- inc n <= n + 1;
+
+compose(inc, double)(5);
+
+! --- Section 3.5: Lazy infinite list of all successors (p.139) ---
+
+dec allsucs : num -> list num;
+--- allsucs n <= n :: allsucs(n + 1);
+
+uses list;
+
+front(5, allsucs(0));
+front(5, allsucs(10));
+
+! --- Section 4 / Figure 1: Ordered binary trees and tree sort (p.140-141) ---
+! (Adapted: 'otree' avoids conflict with 'tree' above; module wrapper removed)
+
+data otree == empty ++ tip_n(num) ++ onode(otree # num # otree);
+
+dec insert : num # otree -> otree;
+--- insert(n, empty) <= tip_n(n);
+--- insert(n, tip_n(m)) <=
+    if n =< m then onode(tip_n(n), m, empty)
+              else onode(empty, m, tip_n(n));
+--- insert(n, onode(t1, m, t2)) <=
+    if n =< m then onode(insert(n, t1), m, t2)
+              else onode(t1, m, insert(n, t2));
+
+dec flatten : otree -> list num;
+--- flatten(empty) <= nil;
+--- flatten(tip_n(n)) <= [n];
+--- flatten(onode(t1, n, t2)) <= flatten(t1) <> [n] <> flatten(t2);
+
+dec treesort : list num -> list num;
+dec fold_insert : list num # otree -> otree;
+--- fold_insert(nil, t) <= t;
+--- fold_insert(x :: xs, t) <= fold_insert(xs, insert(x, t));
+--- treesort(l) <= flatten(fold_insert(l, empty));
+
+treesort([3, 1, 4, 1, 5, 9, 2, 6]);
