@@ -82,6 +82,55 @@ evaluation strategies.
 
 ---
 
+**Perry, Nigel.**
+*The Implementation of Practical Functional Programming Languages.*
+PhD thesis, Imperial College of Science, Technology and Medicine, University of
+London. (Second edition distributed with the Hope* source.)
+
+Perry's doctoral thesis is the primary implementation research document from the
+Alvey Flagship Hope project. Its language is Hope+C (also written Hope*C), a
+minor syntactic extension of Hope with an explicit I/O interface. The thesis
+makes four contributions:
+
+**I/O via result continuations (ch. 3).** Perry surveys all contemporary I/O
+schemes for functional languages — lazy streams (Stoye), message streams,
+Thompson/Dwelly combinator I/O, Karlsson continuation streams, and early
+Haskell monadic I/O — and argues each has "accidental breakages" that
+compromise referential transparency or composability. His solution, *result
+continuations*, arranges for all I/O to be performed by the OS *outside* the
+functional domain. This survey is the best available contemporary account of
+why different I/O designs were tried and rejected, and directly illuminates why
+Paterson chose the simpler `write`/`input` stream approach rather than adopting
+any of the continuation or monadic schemes.
+
+**The Fpm2 abstract machine (ch. 4).** Perry describes a compiled implementation
+of Hope, targeting the Fpm/AM register machine (not a Krivine-style tree
+walker). Section 4.4.5 covers value representation; section 4.5 gives
+performance benchmarks for nfib, queens, Tak/Takl, Triangle, and FFT compared
+to equivalent C programs. The Fpm2 path is the compiled-code route Imperial
+College was pursuing for the Flagship hardware; Paterson's Krivine interpreter
+was the alternative correctness-first approach developed independently at
+Queensland.
+
+**An extended type system with overloading (ch. 7).** Perry introduces
+user-defined identifier overloading (the same symbol usable for integer and
+matrix multiplication) and existential quantification for abstract data types.
+His type-checking algorithm (ch. 8, "Upscan/Downscan") handles both
+polymorphism and overloading resolution simultaneously. The existential
+quantification material is directly relevant to the semantics of Hope's
+`abstype` declarations; section 7.4 gives the Hope+C formulation.
+
+**Inter-language working (ch. 5).** A functional/imperative foreign-function
+interface allowing Hope+C programs to call C and Fortran, preserving
+referential transparency at the language boundary. Not relevant to Paterson's
+interpreter.
+
+Appendix 1 lists the Hope+C continuation primitives. Appendix 2 gives complete
+Hope+C source for several I/O programs. Appendix 3 lists all Fpm/AM opcodes and
+built-in functions. Appendix 4 contains the benchmark programs in full.
+
+---
+
 ## Hope as primary FP teaching language
 
 **Glaser, Hugh, Hankin, Chris, and Till, David.**
@@ -131,6 +180,56 @@ Ellis Horwood, Chichester, England, 1990.
 The only book-length treatment of Hope. Reviews of this book include L.C.
 Paulson's assessment in *The Computer Journal*, Vol. 35, No. 5, 1992, p. 491
 (ISBN 0 13 338237 0; see `cxx/doc/bailey-book-review.md` for a summary).
+
+---
+
+## Extensions and descendants
+
+**Darlington, John and Guo, Yi-ke.**
+"The Unification of Functional and Logic Languages — Towards Constraint
+Functional Programming."
+*Proceedings of the IEEE*, 1989 (CH2803-5/89/0000-0162). Also published as
+Imperial College Department of Computing technical report.
+
+Darlington — co-author of the 1977 Burstall/Darlington transformation paper
+that established Hope's equation-and-pattern-matching syntax — returns to the
+Hope lineage here to introduce *Constraint Hope* (CHOPE), a constraint
+functional programming language using Hope as its syntactic and semantic base.
+The paper is significant both for what it reveals about Hope's design qualities
+and for where the language was heading by 1989.
+
+**Hope as the right base.** The paper preserves Hope syntax intact (`data`,
+`dec`, `---`/`<=`, pattern matching, algebraic types). Constraints are grafted
+on as a separate syntactic layer appended after the `<=` of each defining
+equation. Any valid Hope program is a valid CHOPE program. This is a deliberate
+choice: the authors argue that Hope's clean algebraic type system and
+first-order-equation semantics make it the natural vehicle for constraint
+extension, whereas languages with side effects or ad hoc overloading would
+complicate the constraint semantics.
+
+**The constraint mechanism.** A CHOPE defining rule has the form
+`f(pattern) <= expression | constraint`, where the constraint is a conjunction
+of L-constraint predicates over the domain of computation. The interpreter is
+non-deterministic: it performs *goal rewriting* (standard functional reduction)
+interleaved with *constraint solving* (maintaining a satisfiable constraint set
+by intersection). Theorems 3.5–4.5 establish soundness and completeness of this
+operational model. The two mechanisms are kept strictly separate, which avoids
+the coherence problems of earlier functional-logic hybrids.
+
+**Hope examples.** Section 5 gives substantial Hope programs in readable syntax
+including: an address book database (`dec member`, `dec trans`), a sales/
+purchases database, a circuit resistance calculator, a queue implemented as two
+lists (`data queue alpha == q(list alpha # list alpha)`), and a permutations
+example (`dec Perms : list alpha -> list(list alpha)`). These are all well-typed
+Hope programs with constraint annotations and could serve as additional test
+cases.
+
+**Historical position.** CHOPE is a direct antecedent of the constraint
+functional-logic languages that followed (Curry, Mercury). The paper cites
+Darlington's earlier CLP work and Reddy's treatment of logic variables in
+functional languages. That Darlington chose Hope — not Miranda, not ML — as the
+base for this extension in 1989 is further evidence of Hope's standing as the
+reference language for clean functional semantics at Imperial College.
 
 ---
 
@@ -216,5 +315,23 @@ type.
     publisher = {Ellis Horwood},
     address   = {Chichester, England},
     year      = {1990}
+}
+
+@phdthesis{perry,
+    author  = {Nigel Perry},
+    title   = {The Implementation of Practical Functional Programming Languages},
+    school  = {Imperial College of Science, Technology and Medicine,
+               University of London},
+    note    = {Second edition distributed with the {Hope*} source}
+}
+
+@inproceedings{darlington-guo,
+    author    = {John Darlington and Yi-ke Guo},
+    title     = {The Unification of Functional and Logic Languages ---
+                 Towards Constraint Functional Programming},
+    booktitle = {Proceedings of the {IEEE}},
+    pages     = {162--167},
+    year      = {1989},
+    note      = {CH2803-5/89/0000-0162. Introduces {CHOPE} (Constraint {Hope})}
 }
 ```
