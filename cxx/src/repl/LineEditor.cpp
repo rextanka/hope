@@ -30,7 +30,7 @@ namespace hope {
 
 LineEditor::LineEditor() {
 #ifdef HOPE_PLATFORM_POSIX
-    saved_termios_ = new struct ::termios{};
+    saved_termios_ = new ::termios{};
 #endif
 }
 
@@ -67,7 +67,7 @@ bool LineEditor::enter_raw_mode() {
     if (!isatty(STDIN_FILENO)) return false;
     if (tcgetattr(STDIN_FILENO, saved_termios_) != 0) return false;
 
-    struct ::termios raw = *saved_termios_;
+    ::termios raw = *saved_termios_;
     // Input flags: no break, no CR→NL, no parity, no 8-bit strip, no flow ctrl.
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
     // Output flags: disable post-processing so we control \r\n ourselves.
@@ -127,7 +127,7 @@ void LineEditor::refresh(const std::string& prompt,
     }
 
     // Write atomically.
-    ::write(STDOUT_FILENO, out.c_str(), out.size());
+    (void)::write(STDOUT_FILENO, out.c_str(), out.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ void LineEditor::refresh(const std::string& prompt,
 std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
 {
     // Print prompt.
-    ::write(STDOUT_FILENO, prompt.c_str(), prompt.size());
+    (void)::write(STDOUT_FILENO, prompt.c_str(), prompt.size());
 
     std::string buf;       // current line buffer
     size_t      cursor = 0;// insertion point (index into buf)
@@ -146,10 +146,10 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
     // Bracketed-paste mode: enable so we can detect paste bursts.
     static const char* bp_on  = "\x1b[?2004h";
     static const char* bp_off = "\x1b[?2004l";
-    ::write(STDOUT_FILENO, bp_on, strlen(bp_on));
+    (void)::write(STDOUT_FILENO, bp_on, strlen(bp_on));
 
     auto cleanup = [&]() {
-        ::write(STDOUT_FILENO, bp_off, strlen(bp_off));
+        (void)::write(STDOUT_FILENO, bp_off, strlen(bp_off));
     };
 
     bool in_paste = false; // inside a bracketed paste
@@ -160,7 +160,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
         if (n <= 0) {
             // EOF or error.
             cleanup();
-            ::write(STDOUT_FILENO, "\r\n", 2);
+            (void)::write(STDOUT_FILENO, "\r\n", 2);
             if (buf.empty()) return std::nullopt;
             push_history(buf);
             return buf;
@@ -182,7 +182,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
                 // Bracketed paste start: ESC [ 2 0 0 ~
                 if (seq[1] == '2') {
                     unsigned char rest[3] = {};
-                    ::read(STDIN_FILENO, rest, 3);
+                    (void)::read(STDIN_FILENO, rest, 3);
                     if (rest[0] == '0' && rest[1] == '0' && rest[2] == '~') {
                         in_paste = true;
                     }
@@ -198,7 +198,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
                 if (seq[1] >= '0' && seq[1] <= '9') {
                     // Extended sequence: ESC [ <digit> ~
                     unsigned char tilde = 0;
-                    ::read(STDIN_FILENO, &tilde, 1);
+                    (void)::read(STDIN_FILENO, &tilde, 1);
                     if (tilde == '~') {
                         if (seq[1] == '3') {
                             // Delete key: ESC [ 3 ~
@@ -268,7 +268,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
             } else if (seq[0] == 'O') {
                 // SS3 sequences: ESC O H = Home, ESC O F = End
                 unsigned char s2 = 0;
-                ::read(STDIN_FILENO, &s2, 1);
+                (void)::read(STDIN_FILENO, &s2, 1);
                 if (s2 == 'H') { cursor = 0;           refresh(prompt, buf, cursor); }
                 if (s2 == 'F') { cursor = buf.size();   refresh(prompt, buf, cursor); }
             }
@@ -285,7 +285,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
             case '\n':
             {
                 // Move to next line.
-                ::write(STDOUT_FILENO, "\r\n", 2);
+                (void)::write(STDOUT_FILENO, "\r\n", 2);
                 cleanup();
                 push_history(buf);
                 in_paste = false;
@@ -301,7 +301,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
                 break;
             case 4:      // Ctrl-D: delete at cursor, or EOF on empty line
                 if (buf.empty()) {
-                    ::write(STDOUT_FILENO, "\r\n", 2);
+                    (void)::write(STDOUT_FILENO, "\r\n", 2);
                     cleanup();
                     return std::nullopt;
                 }
@@ -366,7 +366,7 @@ std::optional<std::string> LineEditor::edit_line(const std::string& prompt)
             }
             case 12:     // Ctrl-L: clear screen, redraw
             {
-                ::write(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
+                (void)::write(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
                 refresh(prompt, buf, cursor);
                 break;
             }

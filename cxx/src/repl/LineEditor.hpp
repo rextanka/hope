@@ -74,7 +74,7 @@ private:
 
 #if defined(__unix__) || defined(__APPLE__)
     // POSIX termios saved state.
-    struct ::termios* saved_termios_ = nullptr;
+    ::termios* saved_termios_ = nullptr;
 #endif
 };
 
