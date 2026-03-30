@@ -118,6 +118,10 @@ dec chr : num -> char;
 dec num2str : num -> list char;
 dec str2num : list char -> num;
 
+! digits is Bailey's name for num2str (Functional Programming with Hope, s.3.9).
+dec digits : num -> list char;
+--- digits n <= num2str n;
+
 ! The contents of a named file (created lazily).
 
 dec read : list char -> list char;

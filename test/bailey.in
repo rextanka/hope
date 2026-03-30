@@ -1,0 +1,22 @@
+! Tests for features described in Bailey's Functional Programming with Hope.
+
+! digits / num2str: num -> list char (Section 3.9)
+digits 426;
+digits 0;
+digits 42;
+num2str 1984;
+
+! str2num: list char -> num
+str2num "123";
+str2num "0";
+
+! List append <> (Section 3.9)
+[1, 2, 3] <> [4, 5, 6];
+"Hello" <> " " <> "World";
+[] <> [1, 2];
+[1, 2] <> [];
+
+! =< (less-than-or-equal, Bailey's spelling of <=)
+3 =< 5;
+5 =< 5;
+6 =< 5;

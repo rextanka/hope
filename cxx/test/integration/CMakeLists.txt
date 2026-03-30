@@ -42,6 +42,7 @@ set(INTEGRATION_TESTS
     examples_boolexp
     burstall1980
     glaser1984
+    bailey
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)
