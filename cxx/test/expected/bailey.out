@@ -1,0 +1,13 @@
+>> "426" : list char
+>> "0" : list char
+>> "42" : list char
+>> "1984" : list char
+>> 123 : num
+>> 0 : num
+>> [1, 2, 3, 4, 5, 6] : list num
+>> "Hello World" : list char
+>> [1, 2] : list num
+>> [1, 2] : list num
+>> true : bool
+>> true : bool
+>> false : bool

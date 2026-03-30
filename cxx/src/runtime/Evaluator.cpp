@@ -1847,6 +1847,56 @@ void Evaluator::init_builtins() {
         return result;
     });
 
+    // num2str : num -> list char
+    // Converts a number to its decimal string representation.
+    // Matches Bailey's `digits` function (Section 3.9).
+    register_builtin("num2str", [this](ValRef v) -> ValRef {
+        ValRef f = force(v);
+        auto* vn = std::get_if<VNum>(&f->data);
+        if (!vn) throw RuntimeError("num2str: expected a number",
+                                    SourceLocation{"<runtime>", 0, 0, 0});
+        std::string s;
+        long long n = static_cast<long long>(vn->n);
+        if (vn->n == static_cast<double>(n)) {
+            s = std::to_string(n);
+        } else {
+            // Floating-point: use shortest representation.
+            s = std::to_string(vn->n);
+        }
+        ValRef result = make_nil();
+        for (auto it = s.rbegin(); it != s.rend(); ++it)
+            result = make_cons(make_char(*it), result);
+        return result;
+    });
+
+    // str2num : list char -> num
+    // Parses a decimal integer string to a number.
+    register_builtin("str2num", [this](ValRef v) -> ValRef {
+        std::string s;
+        ValRef cur = force(v);
+        while (true) {
+            auto* vc = std::get_if<VCons>(&cur->data);
+            if (!vc || vc->name == "nil") break;
+            if (vc->name != "::") break;
+            ValRef arg = force(vc->arg);
+            auto* pr = std::get_if<VPair>(&arg->data);
+            if (!pr) break;
+            ValRef head = force(pr->left);
+            auto* ch = std::get_if<VChar>(&head->data);
+            if (!ch) throw RuntimeError("str2num: expected list char",
+                                        SourceLocation{"<runtime>", 0, 0, 0});
+            s += ch->c;
+            cur = force(pr->right);
+        }
+        try {
+            double n = std::stod(s);
+            return make_num(n);
+        } catch (...) {
+            throw RuntimeError("str2num: cannot parse \"" + s + "\"",
+                               SourceLocation{"<runtime>", 0, 0, 0});
+        }
+    });
+
     // --- File I/O ---
 
     // read : list char -> list char

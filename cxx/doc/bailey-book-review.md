@@ -1,8 +1,30 @@
 # Roger Bailey: *Functional Programming with Hope* — Book Review Summary
 
-**Book:** Roger Bailey, *Functional Programming with Hope*
-Prentice-Hall, Hemel Hempstead, 1992.
-£33.50. ISBN 0 13 338237 0.
+## Publication details
+
+**Title:** *Functional Programming with Hope*
+**Author:** Roger Bailey, Imperial College of Science and Technology, London
+**Series:** Ellis Horwood Series in Computers and Their Applications
+**Publisher:** Ellis Horwood Limited, Market Cross House, Cooper Street,
+Chichester, West Sussex, PO19 1EB, England
+(A division of Simon & Schuster International Group)
+**First published:** 1990
+**ISBN:** 0-13-338237-0
+**Library of Congress:** QA76.73.H65B35 1990 — 005.13'3—dc20 (CIP 89-24920)
+**Subject headings:** HOPE (Computer program language);
+Functional programming (Computer science)
+
+> Note: The book's ISBN carries the 0-13 Prentice-Hall prefix because Ellis
+> Horwood distributed through the Simon & Schuster / Prentice-Hall network.
+> Paulson's 1992 review cites it as "Prentice-Hall, Hemel Hempstead" for this
+> reason, though the title page reads Ellis Horwood.
+
+---
+
+## Review
+
+**Book (as cited in review):** Roger Bailey, *Functional Programming with Hope*
+Prentice-Hall, Hemel Hempstead, 1992. £33.50. ISBN 0 13 338237 0.
 
 **Review by:** L. C. Paulson, Cambridge.
 Published in *The Computer Journal*, Vol. 35, No. 5, 1992, p. 491.
