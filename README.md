@@ -320,11 +320,64 @@ ctest --preset release          # run tests (347 tests)
 
 The `hope` binary is placed in `cxx/build_release/`.
 
+### Validation against Bailey's worked examples
+
+The primary reference for the C++20 reimplementation's correctness is
+**Roger Bailey's *Functional Programming with Hope*** (Ellis Horwood, 1990,
+ISBN 0-13-338237-0).  This is the only book-length treatment of Hope, written
+by the person who developed it as a teaching language at Imperial College.  It
+is out of print but second-hand copies occasionally appear.
+
+> **Roger Bailey**, *Functional Programming with Hope*.
+> Ellis Horwood Limited (a division of Simon & Schuster International Group),
+> Market Cross House, Cooper Street, Chichester, West Sussex, England.
+> First published 1990.
+> Series: Ellis Horwood Series in Computers and Their Applications.
+> ISBN 0-13-338237-0.
+> Library of Congress: QA76.73.H65B35 1990 — 005.13′3—dc20 (CIP 89-24920).
+
+The book's **Appendix 1** contains worked solutions to the exercises from all
+nine chapters — complete, author-verified Hope programs covering basic types,
+lists, data types, polymorphism, higher-order functions, and lazy lists.  This
+appendix is a pre-validated test suite; working through it systematically gives
+direct evidence that the C++20 interpreter correctly implements Bailey's
+semantics.
+
+The language definitions in the book's **Appendix 2** (grammar) and
+**Appendix 3** (standard facilities) have been transcribed and compared against
+our implementation in
+[`cxx/doc/BAILEY-HOPE-DEFINITION.md`](cxx/doc/BAILEY-HOPE-DEFINITION.md).
+Key findings:
+
+- Bailey's Hope uses strict (eager) evaluation; Paterson's uses call-by-need.
+  The C++20 reimplementation follows Paterson.  Programs that are correct in
+  both evaluations produce the same results; a small number of Bailey's
+  examples (particularly in Chapter 8, which introduces lazy lists via the
+  `:::` constructor) behave differently and are noted.
+- The `digits` function (§3.9), `<>` list append, and `=<` relational
+  operator from Bailey's predeclared names are all implemented.
+- The Chapter 9 Hope Machine I/O library (`screen`, `goto`, `nl`, `tab`, ...)
+  is not implemented, as it targets a specific 1980s terminal environment.
+
+A second valuable reference — not yet obtained — is **Field and Harrison**'s
+*Functional Programming* (Addison-Wesley, 1988, ISBN 0-201-19249-7), a 595-page
+Imperial College textbook that uses Hope as its primary teaching language
+throughout Part I, with a complete Hope BNF and predefined-function reference
+in Appendix A.  If this book can be located, its appendix will provide
+additional validation material independent of Bailey.
+
+> **Anthony J. Field and Peter G. Harrison**, *Functional Programming*.
+> Addison-Wesley Publishing Company, Wokingham, England, 1988.
+> Series: International Computer Science Series.
+> ISBN 0-201-19249-7.
+> Library of Congress: QA76.6.F477 1988 — 005.1′1 (CIP 88-1265).
+
 ### Documentation
 
 - [`cxx/doc/user-guide.md`](cxx/doc/user-guide.md) — full user guide
 - [`cxx/doc/ref_man.md`](cxx/doc/ref_man.md) — language reference (from Paterson's LaTeX original)
 - [`cxx/doc/hope_tut.md`](cxx/doc/hope_tut.md) — Bailey's tutorial (from the Imperial LaTeX original)
+- [`cxx/doc/BAILEY-HOPE-DEFINITION.md`](cxx/doc/BAILEY-HOPE-DEFINITION.md) — transcription of Bailey's Appendices 2, 3, 4 with implementation comparison
 
 ### Source analysis documents
 

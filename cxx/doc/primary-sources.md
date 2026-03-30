@@ -150,12 +150,17 @@ Selected examples from chapter 8.3 are reproduced in `test/glaser1984.in`.
 
 **Field, Anthony J. and Harrison, Peter G.**
 *Functional Programming.*
-Addison-Wesley, Wokingham, England, 1988.
+Addison-Wesley Publishing Company, Wokingham, England, 1988.
+Series: International Computer Science Series.
+ISBN 0-201-19249-7.
+Library of Congress: QA76.6.F477 1988 — 005.1′1 (CIP 88-1265).
+Authors: Field, Anthony J., 1960–; Harrison, Peter G., 1951–.
+595 pages. First printed 1988.
 
-A comprehensive textbook (595 pages) from Imperial College, University of
-London. **Chapter 2, "An Introduction to Functional Programming through Hope",**
-uses Hope as the primary vehicle for introducing functional programming concepts
-to students new to the paradigm — covering functions, tuples, recursion, infix
+A comprehensive textbook from Imperial College, University of London.
+**Chapter 2, "An Introduction to Functional Programming through Hope",** uses
+Hope as the primary vehicle for introducing functional programming concepts to
+students new to the paradigm — covering functions, tuples, recursion, infix
 operators, qualified expressions, and user-defined data types. Hope is used
 throughout Part I (Programming with Functions) and Part II (Implementation),
 where Chapter 8 ("Intermediate Forms") shows how to translate Hope into
@@ -169,17 +174,49 @@ reflects Hope's status as a clean, well-specified reference language for
 functional programming pedagogy. This is the book cited in `doc/hope.bib` as
 `field&harrison`.
 
+This book is out of print and has not yet been obtained for this project.
+Its Appendix A would provide validation material for the C++20 reimplementation
+independent of Bailey's Appendices.
+
 ---
 
 ## The full book
 
 **Bailey, Roger.**
-*Functional Programming in Hope.*
-Ellis Horwood, Chichester, England, 1990.
+*Functional Programming with Hope.*
+Ellis Horwood Limited (a division of Simon & Schuster International Group),
+Market Cross House, Cooper Street, Chichester, West Sussex, England, 1990.
+Series: Ellis Horwood Series in Computers and Their Applications.
+ISBN 0-13-338237-0.
+Library of Congress: QA76.73.H65B35 1990 — 005.13′3—dc20 (CIP 89-24920).
 
-The only book-length treatment of Hope. Reviews of this book include L.C.
-Paulson's assessment in *The Computer Journal*, Vol. 35, No. 5, 1992, p. 491
-(ISBN 0 13 338237 0; see `cxx/doc/bailey-book-review.md` for a summary).
+> Note: The ISBN prefix 0-13 is Prentice-Hall's; Ellis Horwood distributed
+> through the Simon & Schuster / Prentice-Hall network, so the book appears
+> in some library catalogues under "Prentice-Hall" as publisher.
+
+The only book-length treatment of Hope, written by the person who developed
+it as a teaching language at Imperial College London. 234 pages of text plus
+three appendices. Contents:
+
+| Chapter / Appendix | Topic |
+|---|---|
+| 1–2 | Basic types, function definitions |
+| 3 | Lists and standard list operations (including `digits`, `<>`) |
+| 4 | Data type definitions and trees |
+| 5 | Polymorphic type system |
+| 6–7 | Higher-order functions |
+| 8 | Lazy lists (`:::` constructor; strict-by-default interpreter) |
+| 9 | Lazy I/O (Hope Machine terminal environment) |
+| Appendix 1 | Worked answers to all exercises — a pre-validated test suite |
+| Appendix 2 | Language grammar (railroad diagrams, pp. 269–277) |
+| Appendix 3 | Standard facilities: reserved words, predeclared names, I/O |
+| Appendix 4 | Ordinal values of characters (ASCII table) |
+
+Appendices 2, 3, and 4 have been transcribed and compared against the C++20
+reimplementation in [`cxx/doc/BAILEY-HOPE-DEFINITION.md`](BAILEY-HOPE-DEFINITION.md).
+
+Reviews: L.C. Paulson, *The Computer Journal*, Vol. 35, No. 5, 1992, p. 491
+(see [`cxx/doc/bailey-book-review.md`](bailey-book-review.md) for a summary).
 
 ---
 
