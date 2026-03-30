@@ -1,6 +1,7 @@
 // Session.cpp — Hope interpreter session (batch/file mode).
 
 #include "repl/Session.hpp"
+#include "repl/LineEditor.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -832,14 +833,38 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
     bool in_char    = false; // inside a char literal
     bool in_comment = false; // inside a ! line comment
 
-    auto prompt = [&]() {
-        if (accum.empty()) out << "hope> " << std::flush;
-        else               out << "...   " << std::flush;
+    // Statement accumulator for history: physical lines of the current
+    // in-progress statement, joined so a complete statement is one entry.
+    std::string stmt_for_history;
+
+    // Use LineEditor (raw TTY with history/editing) only when reading from the
+    // real stdin.  Test code and piped input inject a different istream, so we
+    // fall back to plain std::getline in that case.
+    const bool use_editor = (&in == &std::cin);
+    LineEditor editor;
+
+    auto prompt_str = [&]() -> std::string {
+        return accum.empty() ? "hope> " : "...   ";
+    };
+
+    // Read one physical line, displaying the prompt.
+    auto read_line = [&]() -> std::optional<std::string> {
+        if (use_editor) {
+            return editor.read_line(prompt_str());
+        } else {
+            out << prompt_str() << std::flush;
+            std::string line;
+            if (!std::getline(in, line)) return std::nullopt;
+            return line;
+        }
     };
 
     // Process whatever is in `accum` as a snippet.
-    auto flush_accum = [&]() {
+    auto flush_accum = [&](bool add_to_history) {
         if (accum.empty()) return;
+        if (use_editor && add_to_history && !stmt_for_history.empty())
+            editor.add_history(stmt_for_history);
+        stmt_for_history.clear();
         std::string code = std::move(accum);
         accum.clear();
         depth = 0; in_string = false; in_char = false; in_comment = false;
@@ -855,12 +880,15 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
         return s.substr(start, end - start + 1);
     };
 
-    prompt();
-    std::string line;
-    while (std::getline(in, line)) {
+    while (true) {
+        auto maybe_line = read_line();
+        if (!maybe_line) break;  // EOF / Ctrl-D
+        std::string line = std::move(*maybe_line);
         // Check for a meta-command on its own line (starts with ':').
         std::string trimmed = trim(line);
         if (accum.empty() && !trimmed.empty() && trimmed[0] == ':') {
+            // Meta-commands go into history so the user can recall them.
+            if (use_editor) editor.add_history(trimmed);
             if (trimmed == ":quit" || trimmed == ":exit" || trimmed == ":q") {
                 out << "Goodbye.\n";
                 return;
@@ -928,12 +956,16 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
                 out << "Unknown command: " << trimmed
                     << "  (type :help for help)\n";
             }
-            prompt();
             continue;
         }
 
+        // Accumulate the physical line for history tracking.
+        if (!stmt_for_history.empty()) stmt_for_history += '\n';
+        stmt_for_history += line;
+
         // Append the line to the accumulator, scanning for statement endings.
         // A statement ends at a top-level ';' (not inside a string/comment).
+        bool statement_completed = false;
         for (char ch : line) {
             if (in_comment) {
                 // Nothing after '!' on the same line is significant.
@@ -961,8 +993,9 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
             }
             if (ch == ';' && depth == 0) {
                 accum += ch;
-                flush_accum();
-                prompt();
+                flush_accum(/*add_to_history=*/true);
+                stmt_for_history.clear();
+                statement_completed = true;
                 continue;
             }
             accum += ch;
@@ -973,15 +1006,13 @@ void Session::run_interactive(std::istream& in, std::ostream& out) {
         // If the line ended mid-statement, add a newline and keep going.
         if (!accum.empty()) {
             accum += '\n';
-            prompt();
-        } else {
-            prompt();
         }
+        (void)statement_completed;
     }
 
     // Process any trailing input without a final semicolon.
     if (!accum.empty()) {
-        flush_accum();
+        flush_accum(/*add_to_history=*/false);
     }
 }
 
