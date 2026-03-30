@@ -103,6 +103,54 @@ hope
 
 ---
 
+## Line editing
+
+When running interactively on a POSIX system (macOS, Linux, WSL), the REPL
+provides full line editing with history.  When stdin is not a terminal (piped
+input, batch scripts, Windows native) the interpreter falls back to simple
+line input — everything still works, just without the editing features.
+
+### Key bindings
+
+| Key | Action |
+|-----|--------|
+| `Left` / `Ctrl-B` | Move cursor left one character |
+| `Right` / `Ctrl-F` | Move cursor right one character |
+| `Home` / `Ctrl-A` | Move cursor to start of line |
+| `End` / `Ctrl-E` | Move cursor to end of line |
+| `Up` / `Ctrl-P` | Recall previous history entry |
+| `Down` / `Ctrl-N` | Recall next history entry (or blank line) |
+| `Backspace` | Delete character before cursor |
+| `Delete` / `Ctrl-D` | Delete character at cursor; EOF on empty line |
+| `Ctrl-U` | Clear entire line |
+| `Ctrl-K` | Kill (delete) from cursor to end of line |
+| `Ctrl-W` | Delete previous word |
+| `Ctrl-L` | Clear screen and redraw current line |
+| `Ctrl-C` | Discard current line and show a fresh prompt |
+| `Enter` | Submit the line |
+
+### History
+
+History entries are complete Hope **statements** (everything up to and
+including the terminating `;`), not individual physical lines.  This means
+that a multi-line declaration recalled from history arrives already formatted
+across multiple lines.  Meta-commands (`:load`, `:type`, etc.) are also
+added to history.
+
+Consecutive duplicate entries are suppressed so that repeatedly evaluating
+the same expression does not fill the history with identical lines.
+
+History is **in-memory only** for this release — it is not persisted between
+sessions.
+
+### Copy and paste
+
+The REPL enables **bracketed paste mode** on terminals that support it
+(macOS Terminal, iTerm2, most Linux terminals).  Pasted text is inserted at
+the cursor position without being misinterpreted as key sequences.
+
+---
+
 ## REPL commands
 
 The REPL accepts Hope expressions and declarations, plus two classes of
