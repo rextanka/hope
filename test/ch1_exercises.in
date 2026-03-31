@@ -1,0 +1,99 @@
+! Chapter 1 exercises from Bailey's "Functional Programming with Hope" (1990), pp. 18-19.
+! Covers exercises 1-7 (evaluatable subset). Exercises 8-9 are in cxx/doc/CH1_Exercises_Solutions.md.
+! Note: Bailey uses integer num and truval; Paterson uses floating-point num and bool.
+
+! ── Exercise 1: Evaluate the following Hope expressions ──────────────────────
+
+! (a)
+2 - 3 - 4;
+! (b)
+2 - (3 - 4);
+! (c)
+100 div 4 div 5;
+! 1(d): 100 div (4 div 5) omitted — evaluates to error (division by zero).
+! (e)
+(3 + 4 - 5) = (3 - 5 + 4);
+! (f)
+chr (ord 'a' + 1);
+! (g) Paterson: floating-point, no overflow → 2147483648.
+!     Bailey's 32-bit integer Hope gives -2147483647 (implementation-dependent).
+2147483647 + 1;
+! (h) Paterson: 4294967296. Bailey: 0 (32-bit overflow).
+2 * (2147483647 + 1);
+
+! ── Exercise 2: Hope expressions for mathematical fractions ──────────────────
+! Bailey's Hope has no unary minus; negative numbers are written (0 - n).
+
+! (a) -100 / 3
+(0 - 100) div 3;
+! (b) 2/3
+2 div 3;
+! (c) 3 / (4 + 1)
+3 div (4 + 1);
+! (d) (3/4) + 1
+3 div 4 + 1;
+
+! ── Exercise 3: Write Hope expressions to find ────────────────────────────────
+
+! (a) the last digit of 123
+123 mod 10;
+! (b) the penultimate digit of 456
+456 div 10 mod 10;
+! (c) the eighth lower-case letter of the alphabet
+chr (ord 'a' + 7);
+! (d) the "middle" upper-case letter of the alphabet
+!     Bailey p.237 prints "chr ((ord 'Z' - ord 'A' + 1) div 2)" which gives chr(13).
+!     The correct expression is below (errata: missing "ord 'A' +").
+chr (ord 'A' + (ord 'Z' - ord 'A') div 2);
+! (e) the minimum number of 13-gallon barrels to hold an 823-gallon vat
+823 div 13 + 1;
+
+! ── Exercise 4: Rocket distance formula ──────────────────────────────────────
+! d = t*v + t*t*a/2, with t=24h, v=1000 km/h, a=50 km/h^2
+24 * 1000 + 24 * 24 * 50 div 2;
+
+! ── Exercise 5: Fahrenheit to Celsius ────────────────────────────────────────
+! Convert 98 degrees F: subtract 32, multiply by 5/9.
+(98 - 32) * 5 div 9;
+
+! ── Exercise 6: Expressions that evaluate to true if... ──────────────────────
+
+! (a) 100 is exactly divisible by 10
+100 mod 10 = 0;
+! (b) 22 is even
+22 mod 2 = 0;
+! (c) the penultimate digit of 139 is different from the last digit of 55
+139 div 10 mod 10 /= 55 mod 10;
+! (d) 'z' is the 26th lower-case letter of the alphabet
+ord 'z' = ord 'a' + 25;
+! (e) [book has duplicate (d)] 'c' is either the 1st or 3rd lower-case letter
+ord 'c' = ord 'a' or ord 'c' = ord 'a' + 2;
+! (f) 'b' is neither the 1st nor the 3rd lower-case letter
+not (ord 'b' = ord 'a' or ord 'b' = ord 'a' + 2);
+! (g) same as (f), without using not
+ord 'b' /= ord 'a' and ord 'b' /= ord 'a' + 2;
+! (h) 100 lies between 50 and 200
+50 =< 100 and 100 =< 200;
+! (i) 10 does not lie between 50 and 200
+not (50 =< 10 and 10 =< 200);
+! (j) same as (i), without using not
+10 < 50 or 200 < 10;
+
+! ── Exercise 7: Type-checking (evaluatable well-typed expressions only) ───────
+! Bailey uses truval; Paterson uses bool.
+! Key divergence: in Bailey, = and * share precedence level (both at 6, left-assoc),
+! so "6 = 2 * 3" parses as "(6 = 2) * 3" — a type error. In Paterson, = is looser
+! than *, so "6 = 2 * 3" = "6 = (2 * 3)" = true. See Solutions doc for full analysis.
+
+! (a) unambiguous in both: (2*3)=6
+2 * 3 = 6;
+! (b) type error in Bailey; evaluates to true in Paterson (= looser than *)
+6 = 2 * 3;
+! (c) type error in Bailey (= tighter than +); true in Paterson (= looser)
+2 + 3 = 5;
+! (e) evaluates to false in both: (3=4)=true = false=true = false
+3 = 4 = true;
+! (f) "true = 3 = 4" is a type error in both; parenthesised form evaluates to false
+true = (3 = 4);
+! (g) correct in both; result type num
+if 3 = 4 then ord 'a' else ord 'b';

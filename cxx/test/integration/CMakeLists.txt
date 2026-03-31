@@ -43,6 +43,7 @@ set(INTEGRATION_TESTS
     burstall1980
     glaser1984
     bailey
+    ch1_exercises
 )
 
 foreach(TEST_NAME IN LISTS INTEGRATION_TESTS)
